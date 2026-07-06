@@ -8,6 +8,8 @@ from tools.failure_taxonomy import failure_record, first_failure_type
 
 SPEED_EPS_M_S = 0.05
 POSITION_EPS_M = 0.01
+CONTACT_ACTIVE_ROLES = {"active_striker", "active_driver", "active_body", "impactor"}
+CONTACT_PASSIVE_ROLES = {"passive_target", "passive_receiver", "passive_body", "target_body"}
 
 
 class CapabilityVerifier:
@@ -56,16 +58,16 @@ class CapabilityVerifier:
         objects = execution_objects(execution)
         failures: list[dict[str, Any]] = []
         if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
-            active = [obj for obj in objects.values() if obj.get("role") == "active_striker"]
-            passive = [obj for obj in objects.values() if obj.get("role") == "passive_target"]
+            active = [obj for obj in objects.values() if str(obj.get("role")) in CONTACT_ACTIVE_ROLES]
+            passive = [obj for obj in objects.values() if str(obj.get("role")) in CONTACT_PASSIVE_ROLES]
             if not active or not passive:
-                failures.append(failure_record("F1_scene_parsing_failure", "billiards capability requires active_striker and passive_target objects"))
+                failures.append(failure_record("F1_scene_parsing_failure", "contact causality requires active and passive rigid-body roles"))
             for obj in passive:
                 speed = vector_norm(initial_velocity(obj))
                 if speed > SPEED_EPS_M_S:
-                    failures.append(failure_record("F3_invalid_initial_physics_state", "passive target has non-zero initial velocity", evidence={"object_id": obj.get("id"), "speed_m_s": round(speed, 4)}))
+                    failures.append(failure_record("F3_invalid_initial_physics_state", "passive body has non-zero initial velocity", evidence={"object_id": obj.get("id"), "speed_m_s": round(speed, 4)}))
                 if not physics_flag(obj, "collision_enabled", default=True):
-                    failures.append(failure_record("F3_invalid_initial_physics_state", "passive target collision is disabled", evidence={"object_id": obj.get("id")}))
+                    failures.append(failure_record("F3_invalid_initial_physics_state", "passive body collision is disabled", evidence={"object_id": obj.get("id")}))
         elif capability_id == "rigid_body_gravity_collision":
             gravity = abs(float((execution.get("environment") or {}).get("gravity_m_s2") or 0.0))
             falling = [obj for obj in objects.values() if obj.get("role") in {"falling_body", "stack_block"}]
@@ -96,17 +98,17 @@ class CapabilityVerifier:
     def _runtime_causality_validity(self, capability_plan: dict[str, Any], execution: dict[str, Any]) -> dict[str, Any]:
         capability_id = str(capability_plan.get("primary_capability_id") or "")
         if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
-            return self._verify_billiard_causality(execution)
+            return self._verify_contact_causality(execution)
         if capability_id == "rigid_body_gravity_collision":
             return self._verify_falling_blocks(execution)
         if capability_id == "sequential_contact_propagation":
             return self._verify_domino_chain(execution)
         return {"passed": True, "failures": []}
 
-    def _verify_billiard_causality(self, execution: dict[str, Any]) -> dict[str, Any]:
+    def _verify_contact_causality(self, execution: dict[str, Any]) -> dict[str, Any]:
         objects = execution_objects(execution)
-        active_ids = {oid for oid, obj in objects.items() if obj.get("role") == "active_striker"}
-        passive_ids = {oid for oid, obj in objects.items() if obj.get("role") == "passive_target"}
+        active_ids = {oid for oid, obj in objects.items() if str(obj.get("role")) in CONTACT_ACTIVE_ROLES}
+        passive_ids = {oid for oid, obj in objects.items() if str(obj.get("role")) in CONTACT_PASSIVE_ROLES}
         trajectory = execution.get("trajectory") or []
         failures: list[dict[str, Any]] = []
         activation_frame_by_passive: dict[str, int] = {}
@@ -121,7 +123,7 @@ class CapabilityVerifier:
                     activation_frame_by_passive.setdefault(passive_id, index)
                 activated.update(newly_activated)
         if not activation_frame_by_passive:
-            failures.append(failure_record("F4_causality_violation", "no active-to-passive contact propagation was recorded"))
+            failures.append(failure_record("F4_causality_violation", "no active-to-passive rigid-body contact propagation was recorded"))
         for passive_id in sorted(passive_ids):
             first_contact = activation_frame_by_passive.get(passive_id, len(trajectory))
             moved_after_contact = False
@@ -129,7 +131,7 @@ class CapabilityVerifier:
                 state = frame_objects(frame).get(passive_id) or {}
                 speed = vector_norm(state_velocity(state))
                 if index < first_contact and speed > SPEED_EPS_M_S:
-                    failures.append(failure_record("F4_causality_violation", "passive target moved before first active contact", evidence={"object_id": passive_id, "frame": frame.get("frame", index), "speed_m_s": round(speed, 4)}))
+                    failures.append(failure_record("F4_causality_violation", "passive body moved before first active contact", evidence={"object_id": passive_id, "frame": frame.get("frame", index), "speed_m_s": round(speed, 4)}))
                     break
                 if index >= first_contact and speed > SPEED_EPS_M_S:
                     moved_after_contact = True

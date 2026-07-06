@@ -48,5 +48,11 @@
     "cases/rolling/negative_no_deceleration.json",
     "cases/rolling/negative_excessive_friction_stop.json",
     "cases/rolling/negative_missing_contact.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

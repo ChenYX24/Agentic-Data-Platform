@@ -50,8 +50,12 @@ class HarnessAssetIntentTests(unittest.TestCase):
         }
         result = resolve_asset_intents(case_spec, top_k=2)
         self.assertEqual(result["case_id"], "asset_smoke")
+        self.assertEqual(result["capability_id"], "asset_intent_resolution")
+        self.assertEqual(result["invocation_contract"]["next_capability_id"], "asset_runtime_binding_invocation")
+        self.assertEqual(result["physics_critical_count"], 6)
         self.assertEqual(len(result["assets"]), 6)
         self.assertTrue(all(row["selected_asset"] for row in result["assets"]))
+        self.assertTrue(all(row["runtime_binding_requirements"] for row in result["assets"]))
 
 
 if __name__ == "__main__":

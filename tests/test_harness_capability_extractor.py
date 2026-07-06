@@ -31,7 +31,7 @@ class HarnessCapabilityExtractorTests(unittest.TestCase):
             contact = capabilities["rigid_body_contact_causality"]
             self.assertGreaterEqual(contact["evidence_count"], 2)
             self.assertIn("Passive bodies start with zero unexplained linear and angular velocity.", contact["runtime_contract"])
-            self.assertIn("Reject if passive targets move above threshold before first active contact.", profile["billiard_reference_workflow"][4]["contract"])
+            self.assertIn("Reject if passive bodies move above threshold before first causal contact.", profile["contact_causality_reference_workflow"][4]["contract"])
 
     def test_public_profile_suppresses_private_sources(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -27,6 +27,10 @@ def main() -> int:
     else:
         for capability in capabilities:
             print(f"{capability['id']}")
+            print(f"  capability_type: {capability.get('capability_type') or '-'}")
+            print(f"  stage_ids: {', '.join(capability.get('stage_ids') or []) or '-'}")
+            if capability.get("deprecated_by"):
+                print(f"  deprecated_by: {capability['deprecated_by']}")
             print(f"  required_signals: {', '.join(capability['required_signals']) or '-'}")
             print(f"  smoke_cases: {', '.join(capability['smoke_cases']) or '-'}")
     return 0

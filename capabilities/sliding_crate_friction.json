@@ -48,5 +48,11 @@
     "cases/sliding/negative_no_deceleration.json",
     "cases/sliding/negative_static_threshold_violation.json",
     "cases/sliding/negative_missing_contact.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

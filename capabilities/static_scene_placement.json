@@ -43,5 +43,11 @@
     "cases/billiards/six_ball_triangle_low_speed.json",
     "cases/ramp/ramp_roll_low_friction.json"
   ],
-  "regression_cases": []
+  "regression_cases": [],
+  "capability_type": "pipeline_stage",
+  "stage_ids": [
+    "static_scene_layout",
+    "camera_planning",
+    "preflight_validation"
+  ]
 }

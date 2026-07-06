@@ -20,6 +20,11 @@ PUBLIC_SOURCE_PATHS = [
     "docs/CAPABILITY_AUTHORING.md",
     "docs/OPTIONAL_VIEWER.md",
     "docs/PHYSICS_AWARE_HARNESS.md",
+    "capabilities/prompt_case_capability_planning.json",
+    "capabilities/explicit_physics_control_surface.json",
+    "capabilities/physics_verifier_truth_gate.json",
+    "capabilities/canonical_signal_capture.json",
+    "capabilities/dataset_artifact_packaging.json",
     "capabilities/rigid_body_contact_causality.json",
     "capabilities/billiard_causality_compiler.json",
     "capabilities/rigid_body_gravity_collision.json",
@@ -125,7 +130,7 @@ class CapabilitySpec:
 
 CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
     CapabilitySpec(
-        capability_id="object_graph_scene_compiler",
+        capability_id="prompt_case_capability_planning",
         title="Prompt To Object-Level Scene Compiler",
         pattern_type="FLOW",
         stage_ids=("planner", "scene_spec", "asset_resolution"),
@@ -450,7 +455,7 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         ),
     ),
     CapabilitySpec(
-        capability_id="verifier_truth_gate",
+        capability_id="physics_verifier_truth_gate",
         title="Verifier As Runtime Truth Gate",
         pattern_type="HOW",
         stage_ids=("verifier", "dataset"),
@@ -581,7 +586,7 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         ),
     ),
     CapabilitySpec(
-        capability_id="dataset_harness_packaging",
+        capability_id="dataset_artifact_packaging",
         title="Verified Multi-View Dataset Packaging",
         pattern_type="FLOW",
         stage_ids=("dataset", "signals", "verifier"),
@@ -759,7 +764,7 @@ def extract_capability_profile(
         },
         "capability_count": len(capabilities),
         "capabilities": capabilities,
-        "billiard_reference_workflow": billiard_reference_workflow(),
+        "contact_causality_reference_workflow": contact_causality_reference_workflow(),
         "iteration_playbook": iteration_playbook(source_preset),
     }
 
@@ -854,37 +859,37 @@ def truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def billiard_reference_workflow() -> list[dict[str, Any]]:
+def contact_causality_reference_workflow() -> list[dict[str, Any]]:
     return [
         {
             "step": 1,
             "name": "Compile object graph",
-            "contract": "Create one active cue/driver body and a passive target rack with stable ids.",
+            "contract": "Create active driver bodies and passive receiver bodies with stable ids.",
         },
         {
             "step": 2,
             "name": "Bind physical assets",
-            "contract": "Use sphere or sphere-like colliders with explicit radius/diameter semantics and no t=0 overlap.",
+            "contract": "Use colliders, mass, rigid body, material, and no-overlap semantics for every physics-critical object.",
         },
         {
             "step": 3,
             "name": "Set physics controls",
-            "contract": "Driver velocity or impulse encodes requested speed; target initial velocities are zero.",
+            "contract": "Active velocity or impulse encodes requested action; passive bodies start below velocity epsilon.",
         },
         {
             "step": 4,
             "name": "Execute runtime",
-            "contract": "Runtime, not the LLM, produces target motion through contact events.",
+            "contract": "Runtime, not the LLM or keyframes, produces passive motion through contact events.",
         },
         {
             "step": 5,
             "name": "Verify causality",
-            "contract": "Reject if passive targets move above threshold before first active contact.",
+            "contract": "Reject if passive bodies move above threshold before first causal contact.",
         },
         {
             "step": 6,
             "name": "Iterate controls",
-            "contract": "Tune speed, restitution, friction, spacing, and solver substeps only after causality passes.",
+            "contract": "Tune speed, restitution, friction, spacing, mass ratio, and solver substeps only after causality passes.",
         },
     ]
 
@@ -957,7 +962,7 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
                 lines.append(f"- `{evidence['source']}`: {evidence['text']}")
         lines.append("")
     lines.extend(["## Rigid-Body Contact Reference Workflow", ""])
-    for step in profile["billiard_reference_workflow"]:
+    for step in profile["contact_causality_reference_workflow"]:
         lines.append(f"{step['step']}. **{step['name']}**: {step['contract']}")
     lines.extend(["", "## Closed-Loop Demo Cases", ""])
     lines.append("| Case | Capability | Verified Contract |")

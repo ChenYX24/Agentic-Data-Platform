@@ -12,6 +12,11 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         ids = {item.id for item in capabilities}
         self.assertIn("rigid_body_contact_causality", ids)
         self.assertIn("billiard_causality_compiler", ids)
+        self.assertIn("prompt_case_capability_planning", ids)
+        self.assertIn("explicit_physics_control_surface", ids)
+        self.assertIn("physics_verifier_truth_gate", ids)
+        self.assertIn("canonical_signal_capture", ids)
+        self.assertIn("dataset_artifact_packaging", ids)
         self.assertIn("asset_intent_resolution", ids)
         self.assertIn("pipeline_stage_orchestration", ids)
         self.assertIn("physics_property_constraint_validation", ids)
@@ -19,6 +24,11 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         self.assertIn("bounce_restitution_ball", ids)
         self.assertIn("rolling_friction_ball", ids)
         self.assertIn("sliding_crate_friction", ids)
+        alias = next(item for item in capabilities if item.id == "billiard_causality_compiler")
+        self.assertEqual(alias.capability_type, "compatibility_alias")
+        self.assertEqual(alias.deprecated_by, "rigid_body_contact_causality")
+        contact = next(item for item in capabilities if item.id == "rigid_body_contact_causality")
+        self.assertEqual(contact.capability_type, "physics_constraint")
 
 
 if __name__ == "__main__":

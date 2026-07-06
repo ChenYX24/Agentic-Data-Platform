@@ -47,5 +47,11 @@
     "cases/bounce/negative_no_rebound.json",
     "cases/bounce/negative_energy_gain.json",
     "cases/bounce/negative_missing_contact.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

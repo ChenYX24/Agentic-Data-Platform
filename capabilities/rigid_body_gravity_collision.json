@@ -43,5 +43,11 @@
   ],
   "regression_cases": [
     "cases/falling/negative_floating_block.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

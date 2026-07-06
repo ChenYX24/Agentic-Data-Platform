@@ -44,5 +44,11 @@
   "regression_cases": [
     "cases/projectile/negative_no_gravity_float.json",
     "cases/projectile/negative_missing_landing_contact.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

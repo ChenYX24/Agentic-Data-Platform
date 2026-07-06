@@ -1,40 +1,8 @@
 {
-  "billiard_reference_workflow": [
-    {
-      "contract": "Create one active cue/driver body and a passive target rack with stable ids.",
-      "name": "Compile object graph",
-      "step": 1
-    },
-    {
-      "contract": "Use sphere or sphere-like colliders with explicit radius/diameter semantics and no t=0 overlap.",
-      "name": "Bind physical assets",
-      "step": 2
-    },
-    {
-      "contract": "Driver velocity or impulse encodes requested speed; target initial velocities are zero.",
-      "name": "Set physics controls",
-      "step": 3
-    },
-    {
-      "contract": "Runtime, not the LLM, produces target motion through contact events.",
-      "name": "Execute runtime",
-      "step": 4
-    },
-    {
-      "contract": "Reject if passive targets move above threshold before first active contact.",
-      "name": "Verify causality",
-      "step": 5
-    },
-    {
-      "contract": "Tune speed, restitution, friction, spacing, and solver substeps only after causality passes.",
-      "name": "Iterate controls",
-      "step": 6
-    }
-  ],
   "capabilities": [
     {
       "confidence": 0.95,
-      "description": "Compile natural language into explicit objects, roles, asset intents, camera needs, lighting, and runtime scene requests instead of a free-form video description.",
+      "description": "Deprecated compatibility profile entry. Use prompt_case_capability_planning for new agent-facing capability planning.",
       "evidence": [
         {
           "matched_terms": [
@@ -110,7 +78,7 @@
         "Inspect asset_requests.json and runtime_scene_request.json before rerendering.",
         "Rerun planner with stricter object-id and role constraints."
       ],
-      "pattern_type": "FLOW",
+      "pattern_type": "compatibility_alias",
       "prompt_moves": [
         "Ask for object roles and relationships, not only visual style.",
         "Separate active drivers, passive receivers, support surfaces, cameras, and lights.",
@@ -129,11 +97,12 @@
       "verifier_checks": [
         "All physics-critical object ids appear in runtime artifacts.",
         "Asset selections and scene graph entries can be traced back to planner intent."
-      ]
+      ],
+      "deprecated_by": "prompt_case_capability_planning"
     },
     {
       "confidence": 0.95,
-      "description": "Compatibility alias for billiards-specific cases. Prefer rigid_body_contact_causality for new planners and case templates.",
+      "description": "Deprecated compatibility alias. Use rigid_body_contact_causality for all new active/passive rigid-body contact cases; billiards is only a smoke family.",
       "evidence": [
         {
           "matched_terms": [
@@ -226,7 +195,7 @@
         "Adjust radius/extent and initial spacing before increasing speed.",
         "Only then sweep driver speed, restitution, and friction to tune spread."
       ],
-      "pattern_type": "FLOW",
+      "pattern_type": "compatibility_alias",
       "prompt_moves": [
         "Express one active striker and a passive target group.",
         "Let the LLM infer reasonable mass, radius, friction, and restitution, but keep passive initial velocity at zero.",
@@ -244,13 +213,14 @@
         "runtime",
         "verifier"
       ],
-      "title": "Billiards Contact Causality Case Family (Compatibility Alias)",
+      "title": "Deprecated Billiards Contact Alias",
       "verifier_checks": [
         "First active contact exists between driver and target group.",
         "Passive pre-contact speed stays below threshold.",
         "Post-contact target displacement or spread matches requested intensity.",
         "Contact events include the expected driver-target pair and optional secondary contacts."
-      ]
+      ],
+      "deprecated_by": "rigid_body_contact_causality"
     },
     {
       "confidence": 0.95,
@@ -611,247 +581,102 @@
       ]
     },
     {
-      "confidence": 0.95,
-      "description": "Represent gravity, material, rigid-body, constraint, force, time, agent, and render-physics bridge controls as typed fields that can be replayed and swept.",
+      "confidence": 0.9,
+      "description": "Represent gravity, material, rigid-body, constraint, force, time, agent, and render-physics bridge controls as typed replayable fields.",
       "evidence": [
         {
-          "matched_terms": [
-            "friction",
-            "mass",
-            "material",
-            "restitution"
-          ],
-          "source": "tools/draft_builder.py:77",
-          "text": "\"initial_velocity_m_s, mass_kg, friction, restitution, collision_shape, material, and expected_event. \""
-        },
-        {
-          "matched_terms": [
-            "material",
-            "parameter",
-            "physics_control"
-          ],
-          "source": "README.md:208",
-          "text": "| 5. Physics Control | Scene objects, prompt physics intent | `physics.json`, `physics_control` | `core/physics_control.py`, `configs/physics_schema.json`, `config/material_profiles.yaml` | Add typed parameters, default…"
-        },
-        {
-          "matched_terms": [
-            "friction",
-            "material",
-            "restitution"
-          ],
-          "source": "README.md:373",
-          "text": "| `materials[]` | static/dynamic friction, restitution, density, damping, hardness |"
-        },
-        {
-          "matched_terms": [
-            "friction",
-            "material",
-            "restitution"
-          ],
-          "source": "docs/PHYSICS_AWARE_HARNESS.md:447",
-          "text": "| `materials[]` | friction, restitution, density, damping |"
-        },
-        {
-          "matched_terms": [
-            "friction",
-            "material",
-            "restitution"
-          ],
-          "source": "tools/dataset_protocol.py:469",
-          "text": "\"material_sweep\": [\"friction\", \"restitution\", \"material\", \"摩擦\", \"弹性\", \"材质\"],"
-        },
-        {
-          "matched_terms": [
-            "parameter",
-            "physics_control"
-          ],
-          "source": "README.md:251",
-          "text": "| `explicit_physics_control_surface` | Physics parameters are typed, replayable, and sweepable |"
-        },
-        {
-          "matched_terms": [
-            "gravity",
-            "rigid_body"
-          ],
-          "source": "README.md:286",
-          "text": "| falling blocks | `rigid_body_gravity_collision` | gravity/collision enabled, z decreases, support contact exists |"
-        },
-        {
-          "matched_terms": [
-            "gravity",
-            "mass"
-          ],
-          "source": "README.md:374",
-          "text": "| `rigid_bodies[]` | mass, inertia scale, initial velocity, gravity/collision flags |"
+          "source": "capabilities/explicit_physics_control_surface.json",
+          "text": "Represent gravity, material, rigid-body, constraint, force, time, agent, and render-physics bridge controls as typed replayable fields."
         }
       ],
-      "evidence_count": 777,
+      "evidence_count": 4,
       "failure_modes": [
-        "Implicit physics looks plausible once but cannot be reproduced.",
-        "LLM changes multiple physical variables during a sensitivity test.",
-        "Verifier can only check schema because trajectory evidence is absent."
+        "F3_invalid_initial_physics_state",
+        "F4_causality_violation",
+        "F7_runtime_artifact_incomplete"
       ],
       "id": "explicit_physics_control_surface",
       "iteration_moves": [
-        "Run baseline, implicit, and structured-control variants.",
-        "Sweep one parameter across fixed seeds.",
-        "Compare reproduction variance and verifier pass rate."
+        "Move physical values into `physical_parameters` or `physics_control`.",
+        "Add expected invariant ranges for every swept parameter.",
+        "Do not change camera/action/initial state during sensitivity tests."
       ],
-      "pattern_type": "HOW",
+      "pattern_type": "physics_constraint",
       "prompt_moves": [
-        "Use prompt wording to infer control intent, then write typed values with source/confidence.",
-        "Do not bury physical assumptions in natural language notes.",
-        "Lock camera, action, and initial state for parameter sensitivity tests."
+        "Physical behavior should be controlled through structured fields, not hidden prompt prose.",
+        "Each control should have a value, source, confidence, and deterministic replay semantics when generated by an LLM.",
+        "Matched replay changes one physical parameter while locking seed, camera, action, and initial state."
       ],
       "runtime_contract": [
-        "physics.json and physics_control carry deterministic values.",
-        "Runtime reads controls directly rather than reinterpreting the prompt.",
-        "Matched replay changes one control at a time."
+        "physics_control",
+        "parameter_sample",
+        "seed",
+        "runtime_control_echo",
+        "expected_invariants"
       ],
       "stage_ids": [
-        "planner",
         "physics_control",
+        "case_spec_compilation",
         "benchmark"
       ],
       "title": "Explicit Physics Control Surface",
       "verifier_checks": [
-        "Schema-valid physics_control is present.",
-        "Runtime echo of controls matches planner output.",
-        "Single-parameter changes produce predictable trajectory or contact changes."
+        "Required physics_control fields are present and typed.",
+        "Runtime control echo matches the case spec.",
+        "Single-parameter sweeps produce directionally predictable trajectory/contact changes."
       ]
     },
     {
-      "confidence": 0.95,
-      "description": "Capture video and aligned evidence streams on one timebase: RGB, trajectory, contacts, camera path, depth proxy, normal proxy, audio, engine states, and semantic labels.",
+      "confidence": 0.9,
+      "description": "Collect RGB, depth, segmentation, trajectory, contact events, camera trajectory, and engine-state labels on a single deterministic timebase.",
       "evidence": [
         {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "depth",
-            "normal",
-            "signals",
-            "trajectory"
-          ],
-          "source": "README.md:16",
-          "text": "-> Stage 7: RGB / trajectory / contacts / camera / depth / normal / audio signals"
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "camera trajectory",
-            "depth",
-            "normal",
-            "trajectory"
-          ],
-          "source": "tools/dataset_protocol.py:165",
-          "text": "\"physeditworld\": \"RGB, depth, normal, audio, action trace, camera trajectory, engine states, semantics, and gravity labels are synchronized.\","
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "contact events",
-            "depth",
-            "normal",
-            "render_pass_manifest"
-          ],
-          "source": "tools/dataset_protocol.py:543",
-          "text": "\"当前 RGB 来自 UE native render；audio 可由 contact events 确定性合成；depth / normal 已作为 runtime-derived proxy pass 输出，并在 render_pass_manifest.json 中显式标记 source_type，后续接 UE GBuffer 时可替换为 native_render。\","
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "depth",
-            "normal",
-            "render_pass_manifest"
-          ],
-          "source": "README.md:191",
-          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio signal manifest |"
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "depth",
-            "normal",
-            "trajectory"
-          ],
-          "source": "README.md:252",
-          "text": "| `canonical_signal_capture` | RGB, trajectory, contacts, camera, depth, normal, and audio share a synchronized contract |"
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "depth",
-            "normal",
-            "render_pass_manifest"
-          ],
-          "source": "docs/PHYSICS_AWARE_HARNESS.md:193",
-          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio/camera evidence availability |"
-        },
-        {
-          "matched_terms": [
-            "RGB",
-            "audio",
-            "depth",
-            "normal",
-            "trajectory"
-          ],
-          "source": "tests/test_dataset_protocol.py:23",
-          "text": "for signal_id in (\"rgb\", \"depth\", \"normal\", \"audio\", \"action_trace\", \"camera_trajectory\", \"engine_states\", \"gravity_labels\", \"object_trajectory\", \"contact_events\"):"
-        },
-        {
-          "matched_terms": [
-            "contact events",
-            "normal",
-            "trajectory"
-          ],
-          "source": "docs/PHYSICS_AWARE_HARNESS.md:190",
-          "text": "| `ue_output/trajectory.json` or `debug_preview/trajectory.json` | normalized object states and contact events |"
+          "source": "capabilities/canonical_signal_capture.json",
+          "text": "Collect RGB, depth, segmentation, trajectory, contact events, camera trajectory, and engine-state labels on a single deterministic timebase."
         }
       ],
-      "evidence_count": 712,
+      "evidence_count": 1,
       "failure_modes": [
-        "A video exists but has no trajectory or contacts.",
-        "Depth/normal proxies are mistaken for native GBuffer.",
-        "Different views cannot be compared because camera/action changed."
+        "F5_weak_visual_evidence",
+        "F6_runtime_or_render_failure",
+        "F7_runtime_artifact_incomplete"
       ],
       "id": "canonical_signal_capture",
       "iteration_moves": [
-        "Run pass quality report before dataset packaging.",
-        "Add missing view or signal manifests before rerendering a full suite.",
-        "Keep camera/action/initial_state fixed for control sensitivity runs."
+        "Run render sync checker before packaging.",
+        "Do not mix fallback/debug signals into UE evaluation.",
+        "Add missing camera or render pass exporters before rerunning a batch."
       ],
-      "pattern_type": "FLOW",
+      "pattern_type": "runtime_bridge",
       "prompt_moves": [
-        "Specify which evidence streams are needed for the case.",
-        "Prefer fixed multi-view cameras for comparison and moving cameras for inspection.",
-        "Treat render passes as synchronized artifacts, not UI decorations."
+        "Rendering is evidence only if it can be aligned with physics trace frames.",
+        "Depth and segmentation sources must be labeled as real UE outputs or missing; placeholders are not reference-ready.",
+        "Camera trajectories are part of the sample contract, not optional UI state."
       ],
       "runtime_contract": [
-        "Write render_pass_manifest.json and camera_trajectories.json.",
-        "Align video frames, trajectory frames, contact events, and audio duration.",
-        "Mark derived proxies separately from native UE render passes."
+        "trajectory",
+        "contact_events",
+        "camera_trajectory",
+        "render_pass_manifest",
+        "render_sync_report",
+        "per_view_meta"
       ],
       "stage_ids": [
-        "runtime",
-        "signals",
-        "dataset"
+        "runtime_artifact_collection",
+        "render_pass_collection",
+        "signal_synchronization"
       ],
-      "title": "Canonical Multi-Signal Capture",
+      "title": "Canonical Signal Capture",
       "verifier_checks": [
-        "Frame counts and timebase are consistent.",
-        "Missing signals are classified instead of ignored.",
-        "Each camera view has expected RGB and sidecar metadata."
+        "Every planned view has RGB/depth/segmentation metadata or a hard failure.",
+        "Frame counts and timestamps align across physics and render streams.",
+        "Depth variance is non-zero for real depth outputs.",
+        "Source type is explicit for every render pass."
       ]
     },
     {
       "confidence": 0.95,
-      "description": "Use verifier output, not UI preview or successful rendering, as the final readiness decision for reference-ready samples.",
+      "description": "Deprecated compatibility profile entry. Use physics_verifier_truth_gate for new agent-facing capability planning.",
       "evidence": [
         {
           "matched_terms": [
@@ -941,7 +766,7 @@
         "Promote only passing artifacts into dataset shards.",
         "Track verifier pass rate across seeds and prompt variants."
       ],
-      "pattern_type": "HOW",
+      "pattern_type": "compatibility_alias",
       "prompt_moves": [
         "Ask for expected physical evidence when requesting a video.",
         "Keep human visual inspection separate from machine readiness.",
@@ -961,7 +786,8 @@
         "Video exists and is readable.",
         "Trajectory source and contact events are valid.",
         "Physics, visual, asset, and signal gates all pass."
-      ]
+      ],
+      "deprecated_by": "physics_verifier_truth_gate"
     },
     {
       "confidence": 0.95,
@@ -1174,7 +1000,7 @@
     },
     {
       "confidence": 0.95,
-      "description": "Package only readiness-gated runs into a dataset layout with video, synchronized signals, physics labels, asset metadata, and hashes.",
+      "description": "Deprecated compatibility profile entry. Use dataset_artifact_packaging for new agent-facing capability planning.",
       "evidence": [
         {
           "matched_terms": [
@@ -1269,7 +1095,7 @@
         "Audit sample tiers before publishing.",
         "Use benchmark taxonomy to grow cases systematically."
       ],
-      "pattern_type": "FLOW",
+      "pattern_type": "compatibility_alias",
       "prompt_moves": [
         "Request dataset-grade evidence explicitly when generating cases.",
         "Use fixed view names for comparable samples.",
@@ -1290,7 +1116,8 @@
         "Readiness gate overrides legacy status.",
         "Signal manifest and dataset manifest agree.",
         "Sample count and failed_or_incomplete counts are explicit."
-      ]
+      ],
+      "deprecated_by": "dataset_artifact_packaging"
     },
     {
       "confidence": 0.95,
@@ -1501,7 +1328,7 @@
     },
     {
       "confidence": 0.95,
-      "description": "General active-to-passive rigid-body contact causality capability. Billiards is one case family, not the core abstraction.",
+      "description": "Generic active-to-passive rigid-body contact causality capability. Billiards, bowling, crate impacts, mass-ratio collision, and brittle-object impacts are case families, not separate core abilities.",
       "evidence": [
         {
           "matched_terms": [
@@ -1596,7 +1423,7 @@
         "Adjust radius/extent and initial spacing before increasing speed.",
         "Only then sweep driver speed, restitution, and friction to tune spread."
       ],
-      "pattern_type": "pipeline_capability",
+      "pattern_type": "physics_constraint",
       "prompt_moves": [
         "Identify active bodies, passive bodies, collision graph, initial velocities, and expected contact propagation."
       ],
@@ -1607,9 +1434,7 @@
         "Contact graph edges must be present in artifacts."
       ],
       "stage_ids": [
-        "capability_planning",
-        "case_spec_compilation",
-        "scene_spec_compilation",
+        "physics_control",
         "runtime_artifact_collection",
         "physics_verification"
       ],
@@ -1773,9 +1598,154 @@
         "Static-threshold body remains under displacement/speed thresholds.",
         "Motion does not accelerate or reverse without declared external force."
       ]
+    },
+    {
+      "id": "prompt_case_capability_planning",
+      "title": "Prompt Case Capability Planning",
+      "pattern_type": "pipeline_stage",
+      "stage_ids": [
+        "capability_planning",
+        "case_spec_compilation"
+      ],
+      "description": "Map an agent task or natural-language prompt into a capability-backed case family, required evidence streams, and explicit repairable execution plan.",
+      "prompt_moves": [
+        "The prompt is intent, not an executable simulation.",
+        "The selected capability should describe reusable physical invariants rather than a scene template.",
+        "Every planned object should have a stable id, role, and evidence requirement before runtime."
+      ],
+      "runtime_contract": [
+        "prompt",
+        "capability_plan",
+        "case_family",
+        "required_runtime_signals",
+        "failure_taxonomy"
+      ],
+      "verifier_checks": [
+        "Primary capability is not a deprecated compatibility alias.",
+        "Planning output includes pipeline stages, physics constraints, asset operations, and verification layers.",
+        "Unsupported prompts fall back to explicit physics control rather than a visual-only plan."
+      ],
+      "failure_modes": [
+        "F1_scene_parsing_failure",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "iteration_moves": [
+        "Add prompt terms or a capability rule for the missing physical invariant.",
+        "Create a parameterized case template instead of a one-off prompt template.",
+        "Attach required signals and verifier rules before adding runtime code."
+      ],
+      "confidence": 0.9,
+      "evidence_count": 3,
+      "evidence": [
+        {
+          "source": "capabilities/prompt_case_capability_planning.json",
+          "text": "Map an agent task or natural-language prompt into a capability-backed case family, required evidence streams, and explicit repairable execution plan."
+        }
+      ]
+    },
+    {
+      "id": "physics_verifier_truth_gate",
+      "title": "Physics Verifier Truth Gate",
+      "pattern_type": "verification",
+      "stage_ids": [
+        "physics_verification",
+        "render_verification",
+        "diagnosis"
+      ],
+      "description": "Use structured verifier evidence, not UI preview or successful rendering alone, as the final readiness decision for a case or dataset sample.",
+      "prompt_moves": [
+        "A video can look plausible while violating physical causality.",
+        "Verifier decisions must be based on trajectory, contact events, render pass contracts, and asset binding evidence.",
+        "Every failure should map to a stable failure type and repair suggestion."
+      ],
+      "runtime_contract": [
+        "case_spec",
+        "trajectory",
+        "contact_events",
+        "render_manifest",
+        "render_sync_report",
+        "asset_resolution",
+        "verifier_report"
+      ],
+      "verifier_checks": [
+        "Physics invariant status is pass, fail, or warning.",
+        "Render and signal readiness are separate from physics readiness.",
+        "Failure reports include first_failure, evidence, and repair_suggestions.",
+        "Expected negative cases are counted separately from runtime/preflight failures."
+      ],
+      "failure_modes": [
+        "F1_scene_parsing_failure",
+        "F2_asset_missing",
+        "F3_invalid_initial_physics_state",
+        "F4_causality_violation",
+        "F5_weak_visual_evidence",
+        "F6_runtime_or_render_failure",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "iteration_moves": [
+        "Repair the earliest failed layer before changing downstream rendering.",
+        "Add a negative regression case for each new verifier rule.",
+        "Do not promote samples to datasets unless verifier and render sync gates pass."
+      ],
+      "confidence": 0.9,
+      "evidence_count": 3,
+      "evidence": [
+        {
+          "source": "capabilities/physics_verifier_truth_gate.json",
+          "text": "Use structured verifier evidence, not UI preview or successful rendering alone, as the final readiness decision for a case or dataset sample."
+        }
+      ]
+    },
+    {
+      "id": "dataset_artifact_packaging",
+      "title": "Dataset Artifact Packaging",
+      "pattern_type": "dataset_packaging",
+      "stage_ids": [
+        "artifact_manifest",
+        "readiness_gate",
+        "dataset_packaging"
+      ],
+      "description": "Package only verifier-gated runtime artifacts into dataset-ready sample layouts with lineage, hashes, signal availability, and failure visibility.",
+      "prompt_moves": [
+        "Dataset samples must preserve the link from prompt/case to scene, assets, physics controls, runtime outputs, and verifier decision.",
+        "Failed or incomplete samples should remain auditable but not training-ready.",
+        "Generated media, local assets, and runs are local artifacts and should not be committed to the harness repo."
+      ],
+      "runtime_contract": [
+        "case_spec",
+        "harness_artifact",
+        "artifact_manifest",
+        "run_readiness",
+        "verifier_report",
+        "render_sync_report"
+      ],
+      "verifier_checks": [
+        "Manifest references only existing files.",
+        "Readiness fields agree with verifier and render sync reports.",
+        "Sample source type and proxy status are explicit.",
+        "Generated artifacts are excluded from public commits."
+      ],
+      "failure_modes": [
+        "F5_weak_visual_evidence",
+        "F6_runtime_or_render_failure",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "iteration_moves": [
+        "Fix missing runtime artifacts before packaging.",
+        "Keep failed samples in reports but outside training-ready shards.",
+        "Use hashes and manifest paths to detect accidental artifact drift."
+      ],
+      "confidence": 0.9,
+      "evidence_count": 1,
+      "evidence": [
+        {
+          "source": "capabilities/dataset_artifact_packaging.json",
+          "text": "Package only verifier-gated runtime artifacts into dataset-ready sample layouts with lineage, hashes, signal availability, and failure visibility."
+        }
+      ]
     }
   ],
-  "capability_count": 17,
+  "capability_count": 20,
   "iteration_playbook": [
     {
       "input": "README/docs, tests, runtime code, and public config",
@@ -1814,5 +1784,37 @@
     "publishable_profile_sanitized": true,
     "raw_sessions_committed": false
   },
-  "source_preset": "public"
+  "source_preset": "public",
+  "contact_causality_reference_workflow": [
+    {
+      "step": 1,
+      "name": "Compile object graph",
+      "contract": "Create active driver bodies and passive receiver bodies with stable ids."
+    },
+    {
+      "step": 2,
+      "name": "Bind physical assets",
+      "contract": "Use colliders, mass, rigid body, material, and no-overlap semantics for every physics-critical object."
+    },
+    {
+      "step": 3,
+      "name": "Set physics controls",
+      "contract": "Active velocity or impulse encodes requested action; passive bodies start below velocity epsilon."
+    },
+    {
+      "step": 4,
+      "name": "Execute runtime",
+      "contract": "Runtime, not the LLM or keyframes, produces passive motion through contact events."
+    },
+    {
+      "step": 5,
+      "name": "Verify causality",
+      "contract": "Reject if passive bodies move above threshold before first causal contact."
+    },
+    {
+      "step": 6,
+      "name": "Iterate controls",
+      "contract": "Tune speed, restitution, friction, spacing, mass ratio, and solver substeps only after causality passes."
+    }
+  ]
 }

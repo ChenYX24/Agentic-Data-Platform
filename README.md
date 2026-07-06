@@ -156,12 +156,17 @@ old `billiard_causality_compiler` id remains only as a compatibility alias.
 
 | Pipeline Capability | Current Role |
 |---|---|
+| `prompt_case_capability_planning` | Maps prompt/task intent into capability layers, case family, required signals, and failure taxonomy. |
 | `asset_intent_resolution` | Classifies physics-critical vs visual-only assets. |
 | `asset_runtime_binding_invocation` | Resolves top-k asset candidates and binds selected real assets or analytic proxies into runtime actors. |
 | `scene_spec_compilation` | Builds runtime scene contracts from capability/case/assets. |
 | `static_scene_placement` | Validates object ids, transforms, support relations, non-overlap, camera coverage, and physics graph membership before runtime. |
 | `physics_property_constraint_validation` | Checks mass, friction, restitution, damping, gravity, material, and parameter-sweep constraints. |
+| `explicit_physics_control_surface` | Represents gravity/material/rigid-body/constraint/force/time controls as typed replayable fields. |
 | `capability_runtime_artifact_bridge` | Adapts runtime artifacts into verifier inputs. |
+| `canonical_signal_capture` | Keeps trajectory, contacts, camera paths, RGB/depth/segmentation, and render metadata on one timebase. |
+| `physics_verifier_truth_gate` | Makes verifier evidence the readiness source of truth instead of UI preview or render success. |
+| `dataset_artifact_packaging` | Packages only readiness-gated artifacts with lineage, hashes, and signal availability. |
 | `pipeline_stage_orchestration` | Keeps capability planning, case spec, scene layout, asset binding, runtime, verifier, diagnosis, and dataset packaging as explicit stages. |
 
 | Physics Capability | Current Role |
@@ -175,9 +180,29 @@ old `billiard_causality_compiler` id remains only as a compatibility alias.
 | `rolling_friction_ball` | Rolling rigid bodies must maintain support contact, slow down, and travel within a friction-bounded distance envelope. |
 | `sliding_crate_friction` | Sliding rigid bodies must maintain support contact, decelerate within stop-distance bounds, or stay still below static-friction threshold. |
 
-The billiards cases include the old failure mode that produced plausible-looking
-videos by giving passive balls hidden velocity. The verifier rejects that:
-passive balls must have zero initial velocity and only move after contact.
+`billiard_causality_compiler` is deprecated as a core abstraction. It remains in
+the repository only so old runs and scripts can still be interpreted. New agents
+should use `rigid_body_contact_causality`: active/passive contact transfer with
+trajectory and contact-event evidence. Pool, bowling, crate impacts, mass-ratio
+collisions, and brittle-object impacts are all case families of that one
+capability.
+
+The old billiards failure mode is still preserved as a regression: plausible
+videos can be faked by giving passive bodies hidden velocity. The verifier
+rejects that by requiring passive bodies to start still and move only after
+runtime contact evidence.
+
+Planner output is layered. `CapabilityPlanner.plan(prompt)` returns a primary
+physics capability plus:
+
+- `capability_layers.pipeline_stages`
+- `capability_layers.physics_constraints`
+- `capability_layers.asset_operations`
+- `capability_layers.verification`
+- `supporting_capabilities`
+
+Agents should call these stage capabilities in order rather than treating a case
+family as a template.
 
 ## Customization Points
 

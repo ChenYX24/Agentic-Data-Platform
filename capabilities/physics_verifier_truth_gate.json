@@ -1,0 +1,55 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "physics_verifier_truth_gate",
+  "capability_type": "verification",
+  "stage_ids": [
+    "physics_verification",
+    "render_verification",
+    "diagnosis"
+  ],
+  "description": "Use structured verifier evidence, not UI preview or successful rendering alone, as the final readiness decision for a case or dataset sample.",
+  "physical_assumptions": [
+    "A video can look plausible while violating physical causality.",
+    "Verifier decisions must be based on trajectory, contact events, render pass contracts, and asset binding evidence.",
+    "Every failure should map to a stable failure type and repair suggestion."
+  ],
+  "required_signals": [
+    "case_spec",
+    "trajectory",
+    "contact_events",
+    "render_manifest",
+    "render_sync_report",
+    "asset_resolution",
+    "verifier_report"
+  ],
+  "required_assets": [
+    "runtime artifacts",
+    "failure taxonomy"
+  ],
+  "verifier_rules": [
+    "Physics invariant status is pass, fail, or warning.",
+    "Render and signal readiness are separate from physics readiness.",
+    "Failure reports include first_failure, evidence, and repair_suggestions.",
+    "Expected negative cases are counted separately from runtime/preflight failures."
+  ],
+  "failure_taxonomy": [
+    "F1_scene_parsing_failure",
+    "F2_asset_missing",
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F5_weak_visual_evidence",
+    "F6_runtime_or_render_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Repair the earliest failed layer before changing downstream rendering.",
+    "Add a negative regression case for each new verifier rule.",
+    "Do not promote samples to datasets unless verifier and render sync gates pass."
+  ],
+  "smoke_cases": [
+    "cases/billiards/negative_precontact_motion.json",
+    "cases/falling/negative_floating_block.json",
+    "cases/domino/negative_simultaneous_motion.json"
+  ],
+  "regression_cases": []
+}

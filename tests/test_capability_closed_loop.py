@@ -27,10 +27,17 @@ class CapabilityClosedLoopTests(unittest.TestCase):
         self.assertTrue(self.planner.profile.has("bounce_restitution_ball"))
         self.assertTrue(self.planner.profile.has("rolling_friction_ball"))
         self.assertTrue(self.planner.profile.has("sliding_crate_friction"))
+        self.assertTrue(self.planner.profile.has("prompt_case_capability_planning"))
+        self.assertTrue(self.planner.profile.has("explicit_physics_control_surface"))
+        self.assertTrue(self.planner.profile.has("physics_verifier_truth_gate"))
+        self.assertTrue(self.planner.profile.has("canonical_signal_capture"))
+        self.assertTrue(self.planner.profile.has("dataset_artifact_packaging"))
 
     def test_billiards_prompt_maps_to_generic_contact_causality(self) -> None:
         plan = self.planner.plan("A pool table with a cue ball hitting passive target balls.")
         self.assertEqual(plan["primary_capability_id"], "rigid_body_contact_causality")
+        self.assertIn("physics_verifier_truth_gate", plan["supporting_capabilities"])
+        self.assertIn("asset_runtime_binding_invocation", plan["supporting_capabilities"])
 
     def test_falling_blocks_prompt_maps_to_gravity_collision(self) -> None:
         plan = self.planner.plan("Falling blocks under gravity collide with the ground.")

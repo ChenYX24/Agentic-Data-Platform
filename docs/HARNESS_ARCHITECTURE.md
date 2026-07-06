@@ -61,12 +61,21 @@ Agent 可以：
 
 当前 public profile 覆盖：
 
-- billiard causality
+- prompt/case capability planning
+- generic rigid-body contact causality
 - rigid body gravity/collision
 - sequential contact propagation
 - asset intent resolution
+- asset runtime binding invocation
 - scene spec compilation
+- explicit physics control surface
+- physics property constraint validation
 - runtime artifact bridge
+- canonical multi-signal capture
+- physics verifier truth gate
+- dataset artifact packaging
+
+`billiard_causality_compiler` 只保留为 deprecated compatibility alias。新 planner 和新 case 不应再依赖它；台球只是 `rigid_body_contact_causality` 的 regression/smoke family。
 
 ## Case Templates
 

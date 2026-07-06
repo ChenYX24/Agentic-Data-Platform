@@ -40,5 +40,10 @@
     "cases/billiards/six_ball_triangle_low_speed.json",
     "cases/projectile/upward_throw_arc.json"
   ],
-  "regression_cases": []
+  "regression_cases": [],
+  "capability_type": "asset_operation",
+  "stage_ids": [
+    "asset_retrieval",
+    "runtime_actor_binding"
+  ]
 }

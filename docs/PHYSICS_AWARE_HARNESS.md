@@ -12,7 +12,8 @@
 
 输出：
 
-- capability id
+- primary physics capability id
+- layered pipeline capabilities
 - required signals
 - expected invariants
 - failure taxonomy
@@ -22,6 +23,18 @@
 ```bash
 python3.13 scripts/harness_list_capabilities.py
 ```
+
+`CapabilityPlanner.plan(prompt)` 不应该只返回一个 case 名。它必须返回：
+
+| Layer | Capability Examples | 作用 |
+|---|---|---|
+| Pipeline stages | `prompt_case_capability_planning`, `scene_spec_compilation`, `pipeline_stage_orchestration` | 把 prompt 变成可执行 case 和 stage graph。 |
+| Asset operations | `asset_intent_resolution`, `asset_runtime_binding_invocation` | 检索 top-k 资产、选择/降级、绑定 UE actor 和物理 metadata。 |
+| Physics constraints | `rigid_body_contact_causality`, `explicit_physics_control_surface`, `physics_property_constraint_validation` | 约束运动、材质、质量、摩擦、恢复系数、重力、力场、时间步等。 |
+| Runtime/signal bridge | `capability_runtime_artifact_bridge`, `canonical_signal_capture` | 把 UE/fallback 输出标准化成 trajectory/contact/camera/render evidence。 |
+| Verification/package | `physics_verifier_truth_gate`, `dataset_artifact_packaging` | 以 verifier 为真值门，并只打包 readiness-gated artifacts。 |
+
+`billiard_causality_compiler` 不再是主能力。它只是旧 run 的兼容 alias；台球、保龄球、箱体撞击、质量比碰撞都应该走 `rigid_body_contact_causality`。
 
 ## Stage 1: Case Spec
 
@@ -74,6 +87,14 @@ python3.13 scripts/harness_generate_cases.py \
 - fallback reason
 
 当前 resolver 仍是 lightweight/stub，主要用于 contract 和测试。真实资产库接入需要使用资产索引和 physics index。
+
+resolver 输出必须能驱动下一阶段调用，而不是只给 UI 展示：
+
+- `capability_id=asset_intent_resolution`
+- `stage_id=asset_resolution`
+- `invocation_contract.next_capability_id=asset_runtime_binding_invocation`
+- 每个 object 的 `runtime_binding_requirements`
+- physics-critical count / visual-only count
 
 ## Stage 3: Runtime Backend
 

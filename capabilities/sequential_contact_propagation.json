@@ -42,5 +42,11 @@
   ],
   "regression_cases": [
     "cases/domino/negative_simultaneous_motion.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

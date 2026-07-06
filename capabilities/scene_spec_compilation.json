@@ -35,5 +35,9 @@
   "smoke_cases": [
     "cases/billiards/low_speed_single_contact.json"
   ],
-  "regression_cases": []
+  "regression_cases": [],
+  "capability_type": "pipeline_stage",
+  "stage_ids": [
+    "scene_spec_compilation"
+  ]
 }

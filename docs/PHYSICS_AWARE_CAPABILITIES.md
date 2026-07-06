@@ -17,6 +17,8 @@ This report is generated from project memory, docs, tests, and runtime code. It 
 compatibility alias for old runs and tests. New planners, case templates, and
 agent-facing docs should use:
 
+- `prompt_case_capability_planning`: prompt/task -> capability layers, case
+  family, required signals, and repairable execution plan.
 - `rigid_body_contact_causality`: generic active/passive contact transfer across
   billiards, bowling/pins, crates, mass-ratio impacts, and other rigid-body
   collision cases.
@@ -26,8 +28,16 @@ agent-facing docs should use:
   proxy fallback, and runtime actor binding with collider/material metadata.
 - `physics_property_constraint_validation`: structured mass/friction/restitution/
   damping/gravity/material/force constraints and parameter-sensitivity checks.
+- `explicit_physics_control_surface`: typed replayable gravity/material/
+  rigid-body/constraint/force/time controls with runtime echo checks.
 - `pipeline_stage_orchestration`: explicit stage inputs/outputs from planning to
   artifact package, with no silent fallback.
+- `canonical_signal_capture`: synchronized trajectory/contact/camera/render pass
+  evidence on one timebase.
+- `physics_verifier_truth_gate`: verifier report as the source of truth for
+  readiness, separate from UI preview or render success.
+- `dataset_artifact_packaging`: readiness-gated packaging with lineage, hashes,
+  signal availability, and failed-sample visibility.
 - `bounce_restitution_ball`: a concrete restitution validator that checks descent,
   support contact, rebound height, and energy-envelope violations. It is a
   reusable restitution invariant; the ball drop is only the smoke family.
@@ -41,11 +51,22 @@ agent-facing docs should use:
 This keeps the harness useful beyond billiards: the same contact-causality
 contract can verify pool, bowling, crate impacts, and other contact-driven scenes.
 
-### Prompt To Object-Level Scene Compiler
+## Agent-Facing Capability Layers
 
-- id: `object_graph_scene_compiler`
-- pattern: `FLOW`
-- stages: `planner, scene_spec, asset_resolution`
+| Layer | Capability IDs | What The Agent Should Do |
+|---|---|---|
+| Prompt/case planning | `prompt_case_capability_planning` | Select a reusable physical invariant and case family; do not select a one-off object template. |
+| Scene/static layout | `scene_spec_compilation`, `static_scene_placement` | Compile stable object ids, transforms, support surfaces, camera coverage, and collision graph. |
+| Asset retrieval/call | `asset_intent_resolution`, `asset_runtime_binding_invocation` | Retrieve top-k typed candidates, choose/proxy explicitly, bind collider/mass/material/collision profile into runtime. |
+| Physics controls | `explicit_physics_control_surface`, `physics_property_constraint_validation` | Store gravity, mass, friction, restitution, damping, force, time, agent, and render-physics bridge controls as typed replayable fields. |
+| Runtime evidence | `capability_runtime_artifact_bridge`, `canonical_signal_capture` | Normalize UE/fallback trajectory, contacts, camera path, RGB/depth/segmentation, and render metadata. |
+| Verification/package | `physics_verifier_truth_gate`, `dataset_artifact_packaging` | Gate sample readiness and package only auditable, schema-valid artifacts. |
+
+### Prompt / Case Capability Planning
+
+- id: `prompt_case_capability_planning`
+- pattern: `pipeline_stage`
+- stages: `capability_planning, case_spec_compilation`
 - confidence: `0.95` from `116` matched lines
 
 Compile natural language into explicit objects, roles, asset intents, camera needs, lighting, and runtime scene requests instead of a free-form video description.
@@ -174,11 +195,11 @@ Evidence:
 - `tools/dataset_protocol.py:165`: "physeditworld": "RGB, depth, normal, audio, action trace, camera trajectory, engine states, semantics, and gravity labels are synchronized.",
 - `tools/dataset_protocol.py:543`: "当前 RGB 来自 UE native render；audio 可由 contact events 确定性合成；depth / normal 已作为 runtime-derived proxy pass 输出，并在 render_pass_manifest.json 中显式标记 source_type，后续接 UE GBuffer 时可替换为 native_render。",
 
-### Verifier As Runtime Truth Gate
+### Physics Verifier Truth Gate
 
-- id: `verifier_truth_gate`
-- pattern: `HOW`
-- stages: `verifier, dataset`
+- id: `physics_verifier_truth_gate`
+- pattern: `verification`
+- stages: `physics_verification, render_verification, diagnosis`
 - confidence: `0.95` from `251` matched lines
 
 Use verifier output, not UI preview or successful rendering, as the final readiness decision for reference-ready samples.
@@ -233,9 +254,9 @@ Evidence:
 
 ### Verified Multi-View Dataset Packaging
 
-- id: `dataset_harness_packaging`
-- pattern: `FLOW`
-- stages: `dataset, signals, verifier`
+- id: `dataset_artifact_packaging`
+- pattern: `dataset_packaging`
+- stages: `artifact_manifest, readiness_gate, dataset_packaging`
 - confidence: `0.95` from `272` matched lines
 
 Package only readiness-gated runs into a dataset layout with video, synchronized signals, physics labels, asset metadata, and hashes.

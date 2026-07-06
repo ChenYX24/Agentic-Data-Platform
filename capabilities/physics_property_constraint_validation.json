@@ -41,5 +41,11 @@
   ],
   "regression_cases": [
     "cases/ramp/negative_no_friction_sensitivity.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "case_spec_validation",
+    "sensitivity_validation"
   ]
 }

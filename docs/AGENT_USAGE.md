@@ -106,15 +106,36 @@ Decision rules:
 - `verifier_report.status=pass`: physics causality invariant passed.
 - `run_readiness.reference_ready=true`: both rendering and physics verifier gates passed.
 
-## Billiards Capability Rule
+## Capability Layers
+
+Prompt planning returns a primary physics capability plus supporting stage
+capabilities. For a contact/collision prompt, the agent should expect:
+
+- `prompt_case_capability_planning`: prompt -> capability/case family.
+- `asset_intent_resolution`: object roles -> top-k asset candidates.
+- `asset_runtime_binding_invocation`: selected asset/proxy -> runtime actor.
+- `scene_spec_compilation`: capability + case + assets -> executable scene.
+- `explicit_physics_control_surface`: typed gravity/material/rigid-body/force controls.
+- `physics_property_constraint_validation`: parameter ranges and sensitivity checks.
+- `capability_runtime_artifact_bridge`: runtime outputs -> verifier trace.
+- `physics_verifier_truth_gate`: machine-readable pass/fail and diagnosis.
+- `dataset_artifact_packaging`: readiness-gated dataset package.
+
+## Generic Contact Causality Rule
+
+Do not use `billiard_causality_compiler` for new work. It is a deprecated alias
+for old run compatibility. Use `rigid_body_contact_causality` for pool,
+bowling, crate impacts, mass-ratio collisions, brittle-object impacts, and any
+scene where passive rigid bodies should move only after active contact.
 
 The old billiards failure was caused by passive target balls receiving hidden
-initial velocity. This harness forbids that:
+initial velocity. The generic rule is:
 
-- cue ball can have initial velocity;
-- passive targets must start at zero velocity;
-- target movement must be caused by contact events;
-- expected collision graph edges must appear in `contact_events`.
+- active bodies may have initial velocity or impulse;
+- passive bodies must start below velocity epsilon;
+- passive movement must be caused by contact events;
+- expected collision graph edges must appear in `contact_events`;
+- visually plausible motion without trajectory/contact evidence is not accepted.
 
-Use `cases/billiards/negative_hidden_target_velocity.json` to test that the
-verifier catches the forbidden shortcut.
+Use `cases/billiards/negative_hidden_target_velocity.json` as one regression
+case for this generic rule.

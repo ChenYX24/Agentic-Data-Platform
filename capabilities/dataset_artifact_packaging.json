@@ -1,0 +1,48 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "dataset_artifact_packaging",
+  "capability_type": "dataset_packaging",
+  "stage_ids": [
+    "artifact_manifest",
+    "readiness_gate",
+    "dataset_packaging"
+  ],
+  "description": "Package only verifier-gated runtime artifacts into dataset-ready sample layouts with lineage, hashes, signal availability, and failure visibility.",
+  "physical_assumptions": [
+    "Dataset samples must preserve the link from prompt/case to scene, assets, physics controls, runtime outputs, and verifier decision.",
+    "Failed or incomplete samples should remain auditable but not training-ready.",
+    "Generated media, local assets, and runs are local artifacts and should not be committed to the harness repo."
+  ],
+  "required_signals": [
+    "case_spec",
+    "harness_artifact",
+    "artifact_manifest",
+    "run_readiness",
+    "verifier_report",
+    "render_sync_report"
+  ],
+  "required_assets": [
+    "verified run directory",
+    "dataset manifest writer"
+  ],
+  "verifier_rules": [
+    "Manifest references only existing files.",
+    "Readiness fields agree with verifier and render sync reports.",
+    "Sample source type and proxy status are explicit.",
+    "Generated artifacts are excluded from public commits."
+  ],
+  "failure_taxonomy": [
+    "F5_weak_visual_evidence",
+    "F6_runtime_or_render_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Fix missing runtime artifacts before packaging.",
+    "Keep failed samples in reports but outside training-ready shards.",
+    "Use hashes and manifest paths to detect accidental artifact drift."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json"
+  ],
+  "regression_cases": []
+}

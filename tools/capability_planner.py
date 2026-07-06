@@ -24,7 +24,7 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
     CapabilityRule(
         capability_id="rigid_body_contact_causality",
         case_family="rigid_body_contact",
-        terms=("billiard", "billiards", "pool", "cue ball", "cue_ball", "台球", "白球", "目标球", "ball collision"),
+        terms=("billiard", "billiards", "pool", "cue ball", "cue_ball", "bowling", "pins", "rigid-body impact", "rigid body impact", "crate impact", "mass ratio collision", "台球", "白球", "目标球", "保龄球", "球瓶", "刚体碰撞", "ball collision"),
         priority=100,
     ),
     CapabilityRule(
@@ -72,6 +72,31 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
 )
 
 
+PIPELINE_STAGE_CAPABILITIES: tuple[dict[str, str], ...] = (
+    {"stage": "prompt_to_case", "capability_id": "prompt_case_capability_planning"},
+    {"stage": "asset_intent_resolution", "capability_id": "asset_intent_resolution"},
+    {"stage": "scene_spec_compilation", "capability_id": "scene_spec_compilation"},
+    {"stage": "static_scene_placement", "capability_id": "static_scene_placement"},
+    {"stage": "asset_runtime_binding", "capability_id": "asset_runtime_binding_invocation"},
+    {"stage": "runtime_artifact_bridge", "capability_id": "capability_runtime_artifact_bridge"},
+    {"stage": "signal_capture", "capability_id": "canonical_signal_capture"},
+    {"stage": "physics_verification", "capability_id": "physics_verifier_truth_gate"},
+    {"stage": "dataset_packaging", "capability_id": "dataset_artifact_packaging"},
+)
+
+
+GENERIC_PHYSICS_CONTROL_CAPABILITIES: tuple[str, ...] = (
+    "explicit_physics_control_surface",
+    "physics_property_constraint_validation",
+)
+
+
+ASSET_OPERATION_CAPABILITIES: tuple[str, ...] = (
+    "asset_intent_resolution",
+    "asset_runtime_binding_invocation",
+)
+
+
 class CapabilityProfile:
     def __init__(self, path: str | Path = DEFAULT_PROFILE_PATH) -> None:
         self.path = Path(path)
@@ -92,12 +117,15 @@ class CapabilityPlanner:
     def plan(self, prompt: str) -> dict[str, Any]:
         matches = self.match(prompt)
         primary = matches[0] if matches else self._fallback_match(prompt)
+        capability_layers = self._capability_layers(primary["capability_id"])
         return {
             "schema_version": "capability_plan_v1",
             "prompt": prompt,
             "case_family": primary["case_family"],
             "primary_capability_id": primary["capability_id"],
             "matched_capabilities": matches or [primary],
+            "supporting_capabilities": sorted(set(capability_layers["all_capability_ids"]) - {primary["capability_id"]}),
+            "capability_layers": capability_layers,
             "failure_taxonomy_version": "physics_failure_taxonomy_v1",
             "execution_strategy": {
                 "preferred_runtime": "UE",
@@ -144,6 +172,47 @@ class CapabilityPlanner:
             "score": 0,
             "reason": "no specialized capability matched; using generic physics control surface",
             "verifier_checks": capability.get("verifier_checks") or [],
+        }
+
+    def _capability_layers(self, primary_capability_id: str) -> dict[str, Any]:
+        physics_constraints = [primary_capability_id, *GENERIC_PHYSICS_CONTROL_CAPABILITIES]
+        if primary_capability_id == "explicit_physics_control_surface":
+            physics_constraints = list(GENERIC_PHYSICS_CONTROL_CAPABILITIES)
+        all_ids = [
+            primary_capability_id,
+            *GENERIC_PHYSICS_CONTROL_CAPABILITIES,
+            *ASSET_OPERATION_CAPABILITIES,
+            *(item["capability_id"] for item in PIPELINE_STAGE_CAPABILITIES),
+        ]
+        return {
+            "pipeline_stages": [
+                {
+                    **stage,
+                    "title": self.profile.get(stage["capability_id"]).get("title") or stage["capability_id"],
+                }
+                for stage in PIPELINE_STAGE_CAPABILITIES
+            ],
+            "physics_constraints": [
+                {
+                    "capability_id": capability_id,
+                    "title": self.profile.get(capability_id).get("title") or capability_id,
+                }
+                for capability_id in dict.fromkeys(physics_constraints)
+            ],
+            "asset_operations": [
+                {
+                    "capability_id": capability_id,
+                    "title": self.profile.get(capability_id).get("title") or capability_id,
+                }
+                for capability_id in ASSET_OPERATION_CAPABILITIES
+            ],
+            "verification": [
+                {
+                    "capability_id": "physics_verifier_truth_gate",
+                    "title": self.profile.get("physics_verifier_truth_gate").get("title") or "Physics Verifier Truth Gate",
+                }
+            ],
+            "all_capability_ids": list(dict.fromkeys(all_ids)),
         }
 
 

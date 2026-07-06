@@ -1,0 +1,47 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "prompt_case_capability_planning",
+  "capability_type": "pipeline_stage",
+  "stage_ids": [
+    "capability_planning",
+    "case_spec_compilation"
+  ],
+  "description": "Map an agent task or natural-language prompt into a capability-backed case family, required evidence streams, and explicit repairable execution plan.",
+  "physical_assumptions": [
+    "The prompt is intent, not an executable simulation.",
+    "The selected capability should describe reusable physical invariants rather than a scene template.",
+    "Every planned object should have a stable id, role, and evidence requirement before runtime."
+  ],
+  "required_signals": [
+    "prompt",
+    "capability_plan",
+    "case_family",
+    "required_runtime_signals",
+    "failure_taxonomy"
+  ],
+  "required_assets": [
+    "capability profile",
+    "case templates",
+    "failure taxonomy"
+  ],
+  "verifier_rules": [
+    "Primary capability is not a deprecated compatibility alias.",
+    "Planning output includes pipeline stages, physics constraints, asset operations, and verification layers.",
+    "Unsupported prompts fall back to explicit physics control rather than a visual-only plan."
+  ],
+  "failure_taxonomy": [
+    "F1_scene_parsing_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Add prompt terms or a capability rule for the missing physical invariant.",
+    "Create a parameterized case template instead of a one-off prompt template.",
+    "Attach required signals and verifier rules before adding runtime code."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json",
+    "cases/falling/falling_block_on_floor.json",
+    "cases/domino/five_domino_chain.json"
+  ],
+  "regression_cases": []
+}

@@ -50,5 +50,10 @@
   "regression_cases": [
     "cases/billiards/negative_precontact_motion.json",
     "cases/billiards/negative_hidden_target_velocity.json"
-  ]
+  ],
+  "capability_type": "compatibility_alias",
+  "stage_ids": [
+    "case_family_compatibility"
+  ],
+  "deprecated_by": "rigid_body_contact_causality"
 }

@@ -33,5 +33,9 @@
   "smoke_cases": [
     "cases/billiards/low_speed_single_contact.json"
   ],
-  "regression_cases": []
+  "regression_cases": [],
+  "capability_type": "asset_operation",
+  "stage_ids": [
+    "asset_intent_resolution"
+  ]
 }

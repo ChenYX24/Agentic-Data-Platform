@@ -36,5 +36,10 @@
   "smoke_cases": [],
   "regression_cases": [
     "local reference: draft_1782674415850_575607 should fail F4 if artifacts are present"
+  ],
+  "capability_type": "runtime_bridge",
+  "stage_ids": [
+    "runtime_artifact_collection",
+    "artifact_normalization"
   ]
 }

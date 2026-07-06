@@ -52,5 +52,11 @@
   "regression_cases": [
     "cases/billiards/negative_precontact_motion.json",
     "cases/billiards/negative_hidden_target_velocity.json"
+  ],
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
   ]
 }

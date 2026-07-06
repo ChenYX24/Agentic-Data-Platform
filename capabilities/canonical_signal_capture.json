@@ -1,0 +1,49 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "canonical_signal_capture",
+  "capability_type": "runtime_bridge",
+  "stage_ids": [
+    "runtime_artifact_collection",
+    "render_pass_collection",
+    "signal_synchronization"
+  ],
+  "description": "Collect RGB, depth, segmentation, trajectory, contact events, camera trajectory, and engine-state labels on a single deterministic timebase.",
+  "physical_assumptions": [
+    "Rendering is evidence only if it can be aligned with physics trace frames.",
+    "Depth and segmentation sources must be labeled as real UE outputs or missing; placeholders are not reference-ready.",
+    "Camera trajectories are part of the sample contract, not optional UI state."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "camera_trajectory",
+    "render_pass_manifest",
+    "render_sync_report",
+    "per_view_meta"
+  ],
+  "required_assets": [
+    "camera rig definitions",
+    "UE render pass exporters",
+    "artifact manager"
+  ],
+  "verifier_rules": [
+    "Every planned view has RGB/depth/segmentation metadata or a hard failure.",
+    "Frame counts and timestamps align across physics and render streams.",
+    "Depth variance is non-zero for real depth outputs.",
+    "Source type is explicit for every render pass."
+  ],
+  "failure_taxonomy": [
+    "F5_weak_visual_evidence",
+    "F6_runtime_or_render_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Run render sync checker before packaging.",
+    "Do not mix fallback/debug signals into UE evaluation.",
+    "Add missing camera or render pass exporters before rerunning a batch."
+  ],
+  "smoke_cases": [
+    "cases/billiards/six_ball_triangle_low_speed.json"
+  ],
+  "regression_cases": []
+}
