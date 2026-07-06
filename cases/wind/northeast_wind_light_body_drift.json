@@ -1,0 +1,34 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "northeast_wind_light_body_drift",
+  "capability_id": "force_field_wind_drift",
+  "prompt": "A lightweight physics-critical body drifts diagonally under a steady northeast wind field. The trajectory should align with the wind vector rather than a fixed x-only animation.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "wind_vector_m_s": [1.4, 1.0, 0.0],
+    "expected_min_wind_aligned_drift_m": 0.25,
+    "expected_max_wind_aligned_drift_m": 1.05,
+    "fallback_wind_drift_m": 0.62,
+    "expected_min_altitude_m": 0.85,
+    "expected_max_altitude_m": 1.25
+  },
+  "objects": [
+    {
+      "id": "light_body_1",
+      "role": "wind_drift_body",
+      "shape": "sphere",
+      "radius_m": 0.14,
+      "mass_kg": 0.12,
+      "buoyancy_scale": 1.0,
+      "initial_position_m": [0.0, 0.0, 1.0],
+      "initial_velocity_m_s": [0.0, 0.0, 0.0]
+    }
+  ],
+  "active_objects": [],
+  "passive_objects": ["light_body_1"],
+  "required_assets": ["wind_drift_body", "force_field"],
+  "required_signals": ["trajectory", "wind_vector_label", "force_field_label"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Golden positive diagonal wind drift case."
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_missing_wind_label",
+  "capability_id": "force_field_wind_drift",
+  "prompt": "A light body appears to drift, but the case spec does not declare a wind vector or force-field label.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "expected_min_wind_aligned_drift_m": 0.25,
+    "expected_max_wind_aligned_drift_m": 1.0,
+    "fallback_wind_drift_m": 0.55,
+    "expected_min_altitude_m": 0.85,
+    "expected_max_altitude_m": 1.25
+  },
+  "objects": [
+    {
+      "id": "balloon_1",
+      "role": "wind_drift_body",
+      "shape": "sphere",
+      "radius_m": 0.18,
+      "mass_kg": 0.08,
+      "initial_position_m": [0.0, 0.0, 1.0],
+      "initial_velocity_m_s": [0.0, 0.0, 0.0]
+    }
+  ],
+  "active_objects": [],
+  "passive_objects": ["balloon_1"],
+  "required_assets": ["wind_drift_body", "force_field"],
+  "required_signals": ["trajectory", "wind_vector_label", "force_field_label"],
+  "verifier_expectation": {"status": "fail", "failure_type": "F3_invalid_initial_physics_state"},
+  "should_pass": false,
+  "negative_mode": "missing_wind_label",
+  "notes": "Regression: visible drift without structured wind control is invalid."
+}

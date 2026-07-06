@@ -53,6 +53,8 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
         return rolling_trajectory(case_id, case_spec)
     if capability_id == "sliding_crate_friction":
         return sliding_trajectory(case_id, case_spec)
+    if capability_id == "force_field_wind_drift":
+        return wind_trajectory(case_id, case_spec)
     return []
 
 
@@ -333,6 +335,34 @@ def sliding_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str
         frame(1, 0.3, mid, contacts=contacts[1:2]),
         frame(2, 0.6, final, contacts=contacts[2:]),
     ]
+
+
+def wind_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    negative_mode = str(case_spec.get("negative_mode") or "")
+    if not negative_mode and "wrong_direction" in case_id:
+        negative_mode = "wrong_direction"
+    if not negative_mode and "no_wind_drift" in case_id:
+        negative_mode = "no_wind_drift"
+    object_specs = {str(obj.get("id")): obj for obj in case_spec.get("objects", []) if isinstance(obj, dict)}
+    body_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"wind_drift_body", "wind_subject", "balloon", "light_body"}), "wind_body")
+    body_spec = object_specs.get(body_id) or {"initial_position_m": [0.0, 0.0, 1.0], "initial_velocity_m_s": [0.0, 0.0, 0.0]}
+    expected = dict(case_spec.get("expected_physics") or {})
+    wind = vec3(expected.get("wind_vector_m_s") or expected.get("wind_vector") or [1.0, 0.0, 0.0])
+    horizontal = math.sqrt(wind[0] * wind[0] + wind[1] * wind[1])
+    unit = [1.0, 0.0] if horizontal <= 1e-9 else [wind[0] / horizontal, wind[1] / horizontal]
+    drift = float(expected.get("fallback_wind_drift_m") or midpoint_value(float(expected.get("expected_min_wind_aligned_drift_m") or 0.2), float(expected.get("expected_max_wind_aligned_drift_m") or 0.9)))
+    if negative_mode == "wrong_direction":
+        drift = -abs(drift)
+    elif negative_mode == "no_wind_drift":
+        drift = max(0.01, float(expected.get("expected_min_wind_aligned_drift_m") or 0.3) * 0.15)
+    p0 = vec3(body_spec.get("initial_position_m") or [0.0, 0.0, 1.0])
+    v0 = vec3(body_spec.get("initial_velocity_m_s") or [0.0, 0.0, 0.0])
+    z_mid = p0[2] + 0.03
+    z_end = p0[2] + 0.05
+    initial = {body_id: state(p0, v0)}
+    mid = {body_id: state([round(p0[0] + unit[0] * drift * 0.55, 4), round(p0[1] + unit[1] * drift * 0.55, 4), round(z_mid, 4)], [round(unit[0] * abs(drift), 4), round(unit[1] * abs(drift), 4), 0.05])}
+    final = {body_id: state([round(p0[0] + unit[0] * drift, 4), round(p0[1] + unit[1] * drift, 4), round(z_end, 4)], [round(unit[0] * abs(drift) * 0.35, 4), round(unit[1] * abs(drift) * 0.35, 4), 0.0])}
+    return [frame(0, 0.0, initial), frame(1, 0.4, mid), frame(2, 0.8, final)]
 
 
 def state(position: list[float], velocity: list[float], *, rotation: list[float] | None = None) -> dict[str, Any]:

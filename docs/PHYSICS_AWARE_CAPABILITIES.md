@@ -47,6 +47,9 @@ agent-facing docs should use:
 - `sliding_crate_friction`: a concrete sliding/static-friction validator that
   checks support contact, dynamic-friction stop distance, and below-threshold
   static hold. The crate is only the smoke family.
+- `force_field_wind_drift`: a concrete force-field validator that checks explicit
+  wind vector labels, drift direction, bounded displacement, and altitude
+  envelope. The balloon is only the smoke family.
 
 This keeps the harness useful beyond billiards: the same contact-causality
 contract can verify pool, bowling, crate impacts, and other contact-driven scenes.

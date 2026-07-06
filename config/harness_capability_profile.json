@@ -1743,9 +1743,58 @@
           "text": "Package only verifier-gated runtime artifacts into dataset-ready sample layouts with lineage, hashes, signal availability, and failure visibility."
         }
       ]
+    },
+    {
+      "id": "force_field_wind_drift",
+      "title": "Force Field Wind Drift",
+      "pattern_type": "physics_constraint",
+      "stage_ids": [
+        "physics_control",
+        "runtime_artifact_collection",
+        "physics_verification"
+      ],
+      "description": "Validate wind or force-field driven drift for light rigid bodies or buoyant objects using explicit wind vector labels and trajectory displacement evidence. The balloon case is only a smoke family.",
+      "prompt_moves": [
+        "Wind is a structured force-field control, not a hidden animation path.",
+        "Wind-driven objects must declare mass or buoyancy-sensitive physical properties.",
+        "Observed horizontal drift should align with the wind vector within expected displacement bounds."
+      ],
+      "runtime_contract": [
+        "trajectory",
+        "wind_vector_label",
+        "force_field_label",
+        "object_roles",
+        "altitude_envelope"
+      ],
+      "verifier_checks": [
+        "Expected wind vector exists and has non-zero horizontal magnitude.",
+        "Wind subject trajectory has at least two frames.",
+        "Projected displacement along wind direction stays within expected range.",
+        "Drift opposite the wind vector is rejected.",
+        "Altitude remains inside the expected envelope when specified."
+      ],
+      "failure_modes": [
+        "F1_missing_trajectory",
+        "F3_invalid_initial_physics_state",
+        "F4_causality_violation",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "iteration_moves": [
+        "Move wind speed and direction into expected_physics.wind_vector_m_s or physics_control.force_field.wind.",
+        "Bind the wind subject as a physics-critical light body, not a visual-only sprite.",
+        "Use negative cases for missing wind labels, no drift, and wrong drift direction."
+      ],
+      "confidence": 0.9,
+      "evidence_count": 5,
+      "evidence": [
+        {
+          "source": "capabilities/force_field_wind_drift.json",
+          "text": "Wind or force-field driven drift requires explicit wind vector labels and trajectory displacement evidence."
+        }
+      ]
     }
   ],
-  "capability_count": 20,
+  "capability_count": 21,
   "iteration_playbook": [
     {
       "input": "README/docs, tests, runtime code, and public config",

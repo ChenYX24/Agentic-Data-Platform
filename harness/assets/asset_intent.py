@@ -32,6 +32,11 @@ PHYSICS_CRITICAL_ROLES = {
     "bounce_subject",
     "rolling_body",
     "friction_subject",
+    "wind_drift_body",
+    "wind_subject",
+    "balloon",
+    "light_body",
+    "force_field",
 }
 
 

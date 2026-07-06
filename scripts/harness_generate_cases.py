@@ -23,7 +23,7 @@ TEMPLATE_SCHEMA_VERSION = "harness_case_template_v1"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate parameterized harness case specs from a template.")
     parser.add_argument("--template", help="Path to cases/templates/*.template.json")
-    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "bounce", "rolling", "sliding", "basic_physics"], help="Named case suite shortcut.")
+    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "bounce", "rolling", "sliding", "wind", "basic_physics"], help="Named case suite shortcut.")
     parser.add_argument("--num-cases", type=int, help="Number of case specs to generate.")
     parser.add_argument("--count", type=int, help="Alias for --num-cases.")
     parser.add_argument("--seed", type=int, default=0, help="Deterministic generation seed.")
@@ -95,6 +95,7 @@ def template_for_suite(suite: str | None) -> str | None:
         "bounce": "cases/templates/bounce_restitution.template.json",
         "rolling": "cases/templates/rolling_friction.template.json",
         "sliding": "cases/templates/sliding_crate_friction.template.json",
+        "wind": "cases/templates/wind_balloon_drift.template.json",
         "basic_physics": "cases/templates/falling_blocks.template.json",
     }[suite]
 
@@ -134,6 +135,8 @@ def generate_case(template: dict[str, Any], rng: random.Random, *, index: int, s
         return rolling_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     if template_id == "sliding_crate_friction":
         return sliding_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    if template_id == "wind_balloon_drift":
+        return wind_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     raise ValueError(f"unsupported runnable template: {template_id}")
 
 
@@ -527,6 +530,54 @@ def sliding_case(template: dict[str, Any], params: dict[str, Any], *, index: int
     return add_m2_case_contract(case, template, params)
 
 
+def wind_case(template: dict[str, Any], params: dict[str, Any], *, index: int, seed: int, should_pass: bool, negative_mode: str | None) -> dict[str, Any]:
+    speed = float(params["wind_speed_m_s"])
+    angle = float(params["wind_angle_deg"])
+    angle_rad = math.radians(angle)
+    wind = [round(speed * math.cos(angle_rad), 4), round(speed * math.sin(angle_rad), 4), 0.0]
+    mass = float(params["body_mass_kg"])
+    buoyancy = float(params["buoyancy_scale"])
+    drift = max(0.12, min(2.2, speed * buoyancy * 0.25 / max(mass, 0.04)))
+    expected = {
+        "coordinate_system": "z_up",
+        "wind_vector_m_s": wind,
+        "wind_speed_m_s": speed,
+        "wind_angle_deg": angle,
+        "body_mass_kg": mass,
+        "buoyancy_scale": buoyancy,
+        "expected_min_wind_aligned_drift_m": round(max(0.04, drift * 0.45), 4),
+        "expected_max_wind_aligned_drift_m": round(max(0.12, drift * 1.65), 4),
+        "fallback_wind_drift_m": round(drift, 4),
+        "expected_min_altitude_m": 0.82,
+        "expected_max_altitude_m": 1.3,
+    }
+    if negative_mode == "missing_wind_label":
+        expected.pop("wind_vector_m_s", None)
+    objects = [
+        {
+            "id": "wind_body",
+            "role": "wind_drift_body",
+            "shape": "sphere",
+            "radius_m": 0.16,
+            "mass_kg": mass,
+            "buoyancy_scale": buoyancy,
+            "initial_position_m": [0.0, 0.0, 1.0],
+            "initial_velocity_m_s": [0.0, 0.0, 0.0],
+        }
+    ]
+    case = base_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    case.update(
+        {
+            "prompt": f"Generated wind-drift case: a light rigid body is pushed by a {speed:.2f} m/s wind at {angle:.1f} degrees.",
+            "expected_physics": expected,
+            "objects": objects,
+            "active_objects": [],
+            "passive_objects": ["wind_body"],
+        }
+    )
+    return add_m2_case_contract(case, template, params)
+
+
 def add_m2_case_contract(case: dict[str, Any], template: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     expected_physics = dict(case.get("expected_physics") or {})
     camera_policy = dict(template.get("camera_policy") or {})
@@ -596,6 +647,8 @@ def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
         return {"type": "friction_bounded_roll", "support": expected_physics.get("support", "floor")}
     if capability_id == "sliding_crate_friction":
         return {"type": "friction_bounded_slide_or_static_hold", "support": expected_physics.get("support", "floor"), "mode": expected_physics.get("mode", "sliding_stop")}
+    if capability_id == "force_field_wind_drift":
+        return {"type": "force_field_wind_drift", "wind_vector_m_s": expected_physics.get("wind_vector_m_s")}
     return {"type": "trajectory_event"}
 
 
@@ -616,6 +669,8 @@ def required_signals_for(capability_id: str) -> list[str]:
         return ["trajectory", "contact_events", "initial_velocity", "material_friction_label"]
     if capability_id == "sliding_crate_friction":
         return ["trajectory", "contact_events", "initial_velocity", "material_friction_label", "applied_force_label"]
+    if capability_id == "force_field_wind_drift":
+        return ["trajectory", "wind_vector_label", "force_field_label"]
     return ["trajectory"]
 
 
@@ -624,6 +679,8 @@ def expected_failure_for(negative_mode: str | None) -> str:
         return "F5_passive_precontact_motion"
     if negative_mode in {"missing_contact"}:
         return "F2_missing_contact_events"
+    if negative_mode in {"missing_wind_label"}:
+        return "F3_invalid_initial_physics_state"
     return "F4_causality_violation"
 
 

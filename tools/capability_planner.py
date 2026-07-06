@@ -69,6 +69,12 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
         terms=("sliding crate", "sliding friction", "crate slides", "slide and stop", "static friction threshold", "滑动摩擦", "箱子滑动", "滑动停止", "静摩擦阈值", "推不动"),
         priority=81,
     ),
+    CapabilityRule(
+        capability_id="force_field_wind_drift",
+        case_family="wind_balloon_drift",
+        terms=("wind", "wind field", "wind drift", "balloon", "light body drift", "force field", "air drag", "gust", "风", "风场", "气球", "漂移", "风吹", "轻物体"),
+        priority=80,
+    ),
 )
 
 

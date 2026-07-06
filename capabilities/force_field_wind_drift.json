@@ -1,0 +1,57 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "force_field_wind_drift",
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
+  ],
+  "description": "Validate wind or force-field driven drift for light rigid bodies or buoyant objects using explicit wind vector labels and trajectory displacement evidence. The balloon case is only a smoke family.",
+  "physical_assumptions": [
+    "Wind is a structured force-field control, not a hidden animation path.",
+    "Wind-driven objects must declare mass or buoyancy-sensitive physical properties.",
+    "Observed horizontal drift should align with the wind vector within expected displacement bounds.",
+    "Vertical motion should stay inside the declared altitude envelope unless another force is specified."
+  ],
+  "required_signals": [
+    "trajectory",
+    "wind_vector_label",
+    "force_field_label",
+    "object_roles",
+    "altitude_envelope"
+  ],
+  "required_assets": [
+    "wind-drift body collider",
+    "rigid body or buoyant proxy",
+    "force-field runtime control"
+  ],
+  "verifier_rules": [
+    "Expected wind vector exists and has non-zero horizontal magnitude.",
+    "Wind subject trajectory has at least two frames.",
+    "Projected displacement along wind direction stays within expected range.",
+    "Drift opposite the wind vector is rejected.",
+    "Altitude remains inside the expected envelope when specified."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Move wind speed and direction into `expected_physics.wind_vector_m_s` or `physics_control.force_field.wind`.",
+    "Bind the wind subject as a physics-critical light body, not a visual-only sprite.",
+    "Check that runtime exports force-field labels and trajectory frames before tuning wind speed.",
+    "Use negative cases for missing wind labels, no drift, and wrong drift direction."
+  ],
+  "smoke_cases": [
+    "cases/wind/east_wind_balloon_drift.json",
+    "cases/wind/northeast_wind_light_body_drift.json"
+  ],
+  "regression_cases": [
+    "cases/wind/negative_no_wind_drift.json",
+    "cases/wind/negative_wrong_direction.json",
+    "cases/wind/negative_missing_wind_label.json"
+  ]
+}
