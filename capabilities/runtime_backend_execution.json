@@ -1,0 +1,51 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "runtime_backend_execution",
+  "description": "Execute a compiled case through the selected runtime backend while preserving deterministic inputs, explicit source labels, and hard failures for missing UE configuration or artifacts.",
+  "physical_assumptions": [
+    "UE is the production renderer and physics execution backend when configured.",
+    "Fallback or SIM_PROXY execution is only a deterministic debug adapter and must remain source-labeled.",
+    "Runtime failures must not be silently converted into fallback successes.",
+    "The runtime backend owns trajectory, contact, camera, render, and log artifact collection."
+  ],
+  "required_signals": [
+    "case_spec",
+    "runtime_actor_bindings",
+    "render_config",
+    "trajectory",
+    "contact_events",
+    "camera_trajectory",
+    "render_manifest"
+  ],
+  "required_assets": [
+    "UE project for production runs",
+    "UE executable for production runs",
+    "asset registry",
+    "runtime runner command"
+  ],
+  "verifier_rules": [
+    "Backend source type is explicit.",
+    "UE preflight failures are configuration failures, not physics failures.",
+    "Completed runs contain trajectory, contact events, camera trajectory, and render manifest.",
+    "No backend=ue run may silently invoke fallback."
+  ],
+  "failure_taxonomy": [
+    "F6_runtime_or_render_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Set SIM_STUDIO_UE_PROJECT, SIM_STUDIO_UE_EXECUTABLE, SIM_STUDIO_ASSET_REGISTRY, and SIM_STUDIO_UE_RUNNER_CMD for UE runs.",
+    "Inspect ue_preflight_report.json before changing case physics.",
+    "Do not use fallback artifacts to claim production UE success."
+  ],
+  "smoke_cases": [
+    "cases/falling/falling_block_on_floor.json"
+  ],
+  "regression_cases": [],
+  "capability_type": "pipeline_stage",
+  "stage_ids": [
+    "runtime_preflight",
+    "runtime_execution",
+    "runtime_artifact_collection"
+  ]
+}

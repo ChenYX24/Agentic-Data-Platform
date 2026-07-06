@@ -79,9 +79,12 @@ assets/*.local.json
 | `asset_intent_resolution` | 已可用 | 区分 physics-critical、visual-only、skeletal/animation、blueprint/logic、scene/map 等资产意图，并检索候选资产。 |
 | `asset_runtime_binding_invocation` | 已可用 | 记录 top-k candidates、selected asset、proxy fallback reason，并要求 runtime actor binding 对齐 object id。 |
 | `static_scene_placement` | 已可用 | 从 case spec + asset resolution 生成 `scene_layout.json`，并检查 object id、support relation、non-overlap、camera coverage 和 physics graph membership。 |
-| `scene_spec_compilation` | 部分可用 | 定义 scene spec contract；UE actor placement compiler 仍是 TODO。 |
+| `scene_spec_compilation` | 部分可用 | 定义 scene spec contract；真实 UE scene translation 仍需接 runner。 |
+| `runtime_actor_placement_compilation` | 新增 contract | 将 scene layout + asset resolution + camera plan 编译成 deterministic runtime actor bindings。 |
+| `runtime_backend_execution` | 新增 contract | 区分 UE production runtime 与 labeled fallback debug runtime；不允许 silent fallback。 |
 | `physics_property_constraint_validation` | 新增 contract | 检查 mass、friction、restitution、damping、gravity、material、parameter sweep 的结构化范围和方向性响应。 |
 | `capability_runtime_artifact_bridge` | 已可用 | 把 runtime artifact 标准化为 verifier 输入。 |
+| `render_signal_sync_validation` | 新增 contract | 检查 RGB/depth/segmentation/camera/physics trace 的帧同步、视角完整性和 depth 有效性。 |
 
 ### 3.2 物理行为能力 / Case Family
 
@@ -260,10 +263,10 @@ python3.13 scripts/import_adp_asset_index.py \
 - 人工重叠 negative case：`F3_invalid_initial_physics_state` 被抓到。
 - 缺 asset binding negative case：`F2_asset_missing` 被抓到。
 
-仍然缺：
+仍然缺真实实现：
 
-1. UE actor placement compiler。
-   - 读取 `scene_layout.json`。
+1. `runtime_actor_placement_compilation` 的 UE runner 落地。
+   - contract 已存在，但还需要读取 `scene_layout.json`。
    - 在 UE 中创建 actor、设置 transform、collider、mass、material、collision profile。
    - 生成 camera rig / light rig，并把 runtime actor id 回写 artifact。
 
@@ -514,9 +517,9 @@ TODO：
 
 推荐下一步顺序：
 
-1. 提交 bowling chain case family。
-2. 做 `UE actor placement compiler`。
-3. 回到 UE actor placement compiler，让 `scene_layout.json` 驱动真实 actor 生成。
+1. 实现 `runtime_actor_placement_compilation` 的 UE runner adapter。
+2. 让 `scene_layout.json` 驱动真实 actor 生成。
+3. 接 `runtime_backend_execution` 的真实 UE trajectory/contact/camera/render outputs。
 4. 让 billiards/ramp/falling/projectile/fracture/magnetic 通过真实 trajectory/contact verifier。
 
 ## 14. 其他人如何扩展/优化 harness
@@ -570,5 +573,5 @@ git diff --check
 - fallback backend 是 deterministic toy/proxy，只适合 verifier 开发，不是 ground-truth physics。
 - UE SceneCapture multi-view RGB/depth/segmentation 是当前稳定 data path；highres viewport 只作为 debug。
 - 一些 UE rigid-body trajectory 还需要 runtime stepping 修复，才能让真实物理 trace 通过 verifier。
-- 静态场景摆放已有 builder/verifier；UE actor placement compiler 仍未接入。
+- 静态场景摆放已有 builder/verifier；runtime actor placement 已有 capability contract，但真实 UE actor 创建仍未接入。
 - 流体类 case 暂缓，等真实 fluid backend 或可靠 proxy 方案。

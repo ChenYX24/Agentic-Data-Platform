@@ -1,0 +1,52 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "runtime_actor_placement_compilation",
+  "description": "Compile static scene layout, asset resolution, camera plan, and physics graph membership into deterministic runtime actor bindings for UE or another execution backend.",
+  "physical_assumptions": [
+    "Runtime actors are created from stable case object ids, not from display names or prompt prose.",
+    "Physics-critical actors must preserve collider, mass, material, transform, and collision profile metadata.",
+    "Visual-only actors may be omitted from the physics graph but must remain traceable if rendered.",
+    "Camera bindings must reference planned views and deterministic transforms."
+  ],
+  "required_signals": [
+    "scene_layout",
+    "asset_resolution",
+    "runtime_actor_bindings",
+    "camera_plan",
+    "physics_graph"
+  ],
+  "required_assets": [
+    "asset registry",
+    "UE package paths or analytic proxy actor definitions",
+    "physics material metadata"
+  ],
+  "verifier_rules": [
+    "Every physics-critical object has exactly one runtime actor binding.",
+    "Runtime actor ids are unique and stable.",
+    "Actor bindings reference selected assets or explicit analytic proxies.",
+    "Collision graph object ids are present in runtime actor bindings.",
+    "Camera bindings cover every required view."
+  ],
+  "failure_taxonomy": [
+    "F2_asset_missing",
+    "F3_invalid_initial_physics_state",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Run static scene placement before actor placement.",
+    "Update asset registry metadata for missing collider or material fields.",
+    "Use analytic proxy only when the selected real asset cannot satisfy physics-critical metadata.",
+    "Keep object ids stable from case spec through UE actor labels."
+  ],
+  "smoke_cases": [
+    "cases/bowling/bowling_pin_chain_contact.json",
+    "cases/magnetic/attract_magnetic_body.json"
+  ],
+  "regression_cases": [],
+  "capability_type": "pipeline_stage",
+  "stage_ids": [
+    "static_scene_layout",
+    "asset_runtime_binding",
+    "runtime_actor_placement"
+  ]
+}

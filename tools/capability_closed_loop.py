@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from harness.core.capability import canonical_capability_id
 from tools.capability_planner import CapabilityPlanner
 from tools.capability_verifier import CapabilityVerifier
 
@@ -82,8 +83,8 @@ def run_closed_loop_demo(root: str | Path = ROOT, *, timestamp: str | None = Non
 
 
 def simulate_execution_trace(case_id: str, plan: dict[str, Any]) -> dict[str, Any]:
-    capability_id = plan["primary_capability_id"]
-    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+    capability_id = canonical_capability_id(str(plan["primary_capability_id"]))
+    if capability_id == "rigid_body_contact_causality":
         return billiards_trace(case_id, plan)
     if capability_id == "rigid_body_gravity_collision":
         return falling_blocks_trace(case_id, plan)

@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.core.artifact_manager import ArtifactManager
+from harness.core.capability import canonical_capability_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -205,8 +206,8 @@ def build_runtime_scene(case_spec: dict[str, Any], camera_plan: dict[str, Any], 
 
 
 def runtime_objects_for_case(case_spec: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    capability = str(case_spec.get("capability_id") or "")
-    if capability in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+    capability = canonical_capability_id(str(case_spec.get("capability_id") or ""))
+    if capability == "rigid_body_contact_causality":
         return billiards_objects(case_spec)
     if capability == "sequential_contact_propagation":
         return domino_objects(case_spec)
@@ -358,8 +359,8 @@ def runtime_object(
 
 
 def native_case_type(case_spec: dict[str, Any]) -> str:
-    capability = str(case_spec.get("capability_id") or "")
-    if capability in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+    capability = canonical_capability_id(str(case_spec.get("capability_id") or ""))
+    if capability == "rigid_body_contact_causality":
         return "llm_object_graph"
     if capability == "sequential_contact_propagation":
         return "bottle_domino_chain"

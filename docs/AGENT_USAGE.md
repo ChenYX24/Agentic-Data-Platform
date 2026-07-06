@@ -149,7 +149,8 @@ and fragment manifest evidence.
 ## Generic Contact Causality Rule
 
 Do not use `billiard_causality_compiler` for new work. It is not an active
-capability. Use reusable invariants such as `rigid_body_contact_causality`,
+capability contract and is kept only as a deprecated alias when reading old
+artifacts. Use reusable invariants such as `rigid_body_contact_causality`,
 `mass_ratio_momentum_transfer`, or `brittle_impact_fracture` depending on the
 physical behavior you need to verify.
 

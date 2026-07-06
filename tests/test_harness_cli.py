@@ -151,7 +151,7 @@ class HarnessCliTests(unittest.TestCase):
         experiment_help = subprocess.run([sys.executable, str(ROOT / "run_experiment.py"), "--help"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(experiment_help.returncode, 0, experiment_help.stderr)
 
-    def test_list_capabilities_hides_deprecated_alias_by_default(self) -> None:
+    def test_list_capabilities_exposes_layered_taxonomy_without_scene_aliases(self) -> None:
         default = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "harness_list_capabilities.py"), "--json"],
             cwd=ROOT,
@@ -160,9 +160,21 @@ class HarnessCliTests(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         self.assertEqual(default.returncode, 0, default.stderr)
-        default_ids = {item["id"] for item in json.loads(default.stdout)["capabilities"]}
+        payload = json.loads(default.stdout)
+        default_ids = {item["id"] for item in payload["capabilities"]}
         self.assertIn("rigid_body_contact_causality", default_ids)
         self.assertNotIn("billiard_causality_compiler", default_ids)
+        taxonomy = payload["capability_taxonomy"]
+        self.assertIn("prompt_case_capability_planning", taxonomy["pipeline_stage_capabilities"])
+        self.assertIn("asset_intent_resolution", taxonomy["asset_operation_capabilities"])
+        self.assertIn("physics_verifier_truth_gate", taxonomy["verification_capabilities"])
+        self.assertIn("rigid_body_contact_causality", taxonomy["physics_behavior_capabilities"])
+        self.assertEqual(taxonomy["pipeline_execution_order"][0], "prompt_case_capability_planning")
+        self.assertLess(
+            taxonomy["pipeline_execution_order"].index("runtime_actor_placement_compilation"),
+            taxonomy["pipeline_execution_order"].index("runtime_backend_execution"),
+        )
+        self.assertEqual(taxonomy["deprecated_aliases"]["billiard_causality_compiler"], "rigid_body_contact_causality")
 
         with_deprecated = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "harness_list_capabilities.py"), "--json", "--include-deprecated"],
@@ -173,7 +185,7 @@ class HarnessCliTests(unittest.TestCase):
         )
         self.assertEqual(with_deprecated.returncode, 0, with_deprecated.stderr)
         deprecated_ids = {item["id"] for item in json.loads(with_deprecated.stdout)["capabilities"]}
-        self.assertIn("billiard_causality_compiler", deprecated_ids)
+        self.assertNotIn("billiard_causality_compiler", deprecated_ids)
 
     def test_harness_smoke_outputs_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

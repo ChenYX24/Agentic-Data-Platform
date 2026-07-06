@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.core.artifact_schema import write_json
+from harness.core.capability import canonical_capability_id
 from harness.core.case_spec import CASE_SPEC_SCHEMA_VERSION, validate_case_spec
 
 
@@ -1213,9 +1214,9 @@ def add_m2_case_contract(case: dict[str, Any], template: dict[str, Any], params:
 
 
 def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
-    capability_id = str(case.get("capability_id"))
+    capability_id = canonical_capability_id(str(case.get("capability_id")))
     expected_physics = dict(case.get("expected_physics") or {})
-    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+    if capability_id == "rigid_body_contact_causality":
         return {"type": "rigid_body_contact", "collision_graph": expected_physics.get("collision_graph", [])}
     if capability_id == "sequential_contact_propagation":
         return {"type": "ordered_contact_chain", "ordered_chain": expected_physics.get("ordered_chain", [])}
@@ -1294,7 +1295,8 @@ def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def required_signals_for(capability_id: str) -> list[str]:
-    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+    capability_id = canonical_capability_id(capability_id)
+    if capability_id == "rigid_body_contact_causality":
         return ["trajectory", "contact_events", "camera_trajectory"]
     if capability_id == "sequential_contact_propagation":
         return ["trajectory", "contact_events", "rotation"]

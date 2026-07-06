@@ -22,14 +22,40 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    store = CapabilityStore()
     capabilities = [
         capability.to_summary()
-        for capability in CapabilityStore().list()
+        for capability in store.list()
         if args.include_deprecated or capability.capability_type != "compatibility_alias"
     ]
     if args.json:
-        print(json.dumps({"schema_version": "harness_capability_list_v1", "capabilities": capabilities}, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "schema_version": "harness_capability_list_v1",
+                    "capability_taxonomy": store.taxonomy(include_deprecated=args.include_deprecated),
+                    "capabilities": capabilities,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     else:
+        taxonomy = store.taxonomy(include_deprecated=args.include_deprecated)
+        print("Capability taxonomy:")
+        print(f"  pipeline_execution_order: {', '.join(taxonomy.get('pipeline_execution_order') or []) or '-'}")
+        for key in (
+            "pipeline_stage_capabilities",
+            "asset_operation_capabilities",
+            "runtime_bridge_capabilities",
+            "physical_property_constraint_capabilities",
+            "physics_behavior_capabilities",
+            "verification_capabilities",
+            "dataset_packaging_capabilities",
+        ):
+            values = taxonomy.get(key) or []
+            print(f"  {key}: {', '.join(values) or '-'}")
+        print()
         for capability in capabilities:
             print(f"{capability['id']}")
             print(f"  capability_type: {capability.get('capability_type') or '-'}")

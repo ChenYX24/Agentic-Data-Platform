@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from harness.core.artifact_schema import read_json, write_json
+from harness.core.capability import canonical_capability_id
 from harness.core.verifier_schema import verifier_report
 from harness.verification.agent_action_verifier import verify_agent_action
-from harness.verification.billiards_verifier import verify_billiards
 from harness.verification.brittle_fracture_verifier import verify_brittle_fracture
 from harness.verification.bounce_verifier import verify_bounce
 from harness.verification.constraint_verifier import verify_constraint_motion
+from harness.verification.contact_causality_verifier import verify_contact_causality
 from harness.verification.diagnosis import repair_suggestion
 from harness.verification.domino_verifier import verify_domino
 from harness.verification.elastic_constraint_verifier import verify_elastic_constraint
@@ -69,9 +70,9 @@ class PhysicsVerifier:
         return report
 
     def verify(self, case_spec: dict[str, Any], trajectory: list[dict[str, Any]], *, output_dir: str | Path | None = None) -> dict[str, Any]:
-        capability_id = str(case_spec["capability_id"])
-        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
-            failure_type, first_failure, evidence = verify_billiards(case_spec, trajectory)
+        capability_id = canonical_capability_id(str(case_spec["capability_id"]))
+        if capability_id == "rigid_body_contact_causality":
+            failure_type, first_failure, evidence = verify_contact_causality(case_spec, trajectory)
         elif capability_id == "sequential_contact_propagation":
             failure_type, first_failure, evidence = verify_domino(case_spec, trajectory)
         elif capability_id == "rigid_body_gravity_collision":

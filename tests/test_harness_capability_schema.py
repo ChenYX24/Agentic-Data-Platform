@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from harness.core.capability import CapabilityStore
+from harness.core.capability import CapabilityStore, canonical_capability_id
 
 
 class HarnessCapabilitySchemaTests(unittest.TestCase):
@@ -20,6 +20,9 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         self.assertIn("pipeline_stage_orchestration", ids)
         self.assertIn("physics_property_constraint_validation", ids)
         self.assertIn("asset_runtime_binding_invocation", ids)
+        self.assertIn("runtime_actor_placement_compilation", ids)
+        self.assertIn("runtime_backend_execution", ids)
+        self.assertIn("render_signal_sync_validation", ids)
         self.assertIn("bounce_restitution_ball", ids)
         self.assertIn("rolling_friction_ball", ids)
         self.assertIn("sliding_crate_friction", ids)
@@ -33,12 +36,15 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         self.assertIn("elastic_energy_launch", ids)
         self.assertIn("elastic_constraint_rebound", ids)
         self.assertIn("brittle_impact_fracture", ids)
-        alias = next((item for item in capabilities if item.id == "billiard_causality_compiler"), None)
-        if alias is not None:
-            self.assertEqual(alias.capability_type, "compatibility_alias")
-            self.assertEqual(alias.deprecated_by, "rigid_body_contact_causality")
+        self.assertNotIn("billiard_causality_compiler", ids)
         contact = next(item for item in capabilities if item.id == "rigid_body_contact_causality")
         self.assertEqual(contact.capability_type, "physics_constraint")
+        placement = next(item for item in capabilities if item.id == "runtime_actor_placement_compilation")
+        self.assertEqual(placement.capability_type, "pipeline_stage")
+        runtime = next(item for item in capabilities if item.id == "runtime_backend_execution")
+        self.assertEqual(runtime.capability_type, "pipeline_stage")
+        render_sync = next(item for item in capabilities if item.id == "render_signal_sync_validation")
+        self.assertEqual(render_sync.capability_type, "verification")
         elastic = next(item for item in capabilities if item.id == "elastic_energy_launch")
         self.assertEqual(elastic.capability_type, "physics_constraint")
         elastic_constraint = next(item for item in capabilities if item.id == "elastic_constraint_rebound")
@@ -47,6 +53,10 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         self.assertEqual(fracture.capability_type, "physics_constraint")
         magnetic = next(item for item in capabilities if item.id == "magnetic_force_field")
         self.assertEqual(magnetic.capability_type, "physics_constraint")
+
+    def test_deprecated_scene_alias_is_canonicalized_without_being_active(self) -> None:
+        self.assertEqual(canonical_capability_id("billiard_causality_compiler"), "rigid_body_contact_causality")
+        self.assertEqual(canonical_capability_id("rigid_body_contact_causality"), "rigid_body_contact_causality")
 
 
 if __name__ == "__main__":

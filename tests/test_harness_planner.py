@@ -37,6 +37,9 @@ class HarnessPlannerTests(unittest.TestCase):
         self.assertIn("prompt_case_capability_planning", stage_ids)
         self.assertIn("asset_intent_resolution", stage_ids)
         self.assertIn("asset_runtime_binding_invocation", stage_ids)
+        self.assertIn("runtime_actor_placement_compilation", stage_ids)
+        self.assertIn("runtime_backend_execution", stage_ids)
+        self.assertIn("render_signal_sync_validation", stage_ids)
         self.assertIn("physics_verifier_truth_gate", stage_ids)
         constraint_ids = {item["capability_id"] for item in layers["physics_constraints"]}
         self.assertIn("rigid_body_contact_causality", constraint_ids)

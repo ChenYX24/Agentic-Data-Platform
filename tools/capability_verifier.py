@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from harness.core.capability import canonical_capability_id
 from tools.failure_taxonomy import failure_record, first_failure_type
 
 
@@ -54,10 +55,10 @@ class CapabilityVerifier:
         return {"passed": not failures, "failures": failures}
 
     def _initial_physics_validity(self, capability_plan: dict[str, Any], execution: dict[str, Any]) -> dict[str, Any]:
-        capability_id = str(capability_plan.get("primary_capability_id") or "")
+        capability_id = canonical_capability_id(str(capability_plan.get("primary_capability_id") or ""))
         objects = execution_objects(execution)
         failures: list[dict[str, Any]] = []
-        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+        if capability_id == "rigid_body_contact_causality":
             active = [obj for obj in objects.values() if str(obj.get("role")) in CONTACT_ACTIVE_ROLES]
             passive = [obj for obj in objects.values() if str(obj.get("role")) in CONTACT_PASSIVE_ROLES]
             if not active or not passive:
@@ -96,8 +97,8 @@ class CapabilityVerifier:
         return {"passed": not failures, "failures": failures}
 
     def _runtime_causality_validity(self, capability_plan: dict[str, Any], execution: dict[str, Any]) -> dict[str, Any]:
-        capability_id = str(capability_plan.get("primary_capability_id") or "")
-        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
+        capability_id = canonical_capability_id(str(capability_plan.get("primary_capability_id") or ""))
+        if capability_id == "rigid_body_contact_causality":
             return self._verify_contact_causality(execution)
         if capability_id == "rigid_body_gravity_collision":
             return self._verify_falling_blocks(execution)

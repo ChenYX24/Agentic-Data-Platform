@@ -138,8 +138,11 @@ PIPELINE_STAGE_CAPABILITIES: tuple[dict[str, str], ...] = (
     {"stage": "scene_spec_compilation", "capability_id": "scene_spec_compilation"},
     {"stage": "static_scene_placement", "capability_id": "static_scene_placement"},
     {"stage": "asset_runtime_binding", "capability_id": "asset_runtime_binding_invocation"},
+    {"stage": "runtime_actor_placement", "capability_id": "runtime_actor_placement_compilation"},
+    {"stage": "runtime_execution", "capability_id": "runtime_backend_execution"},
     {"stage": "runtime_artifact_bridge", "capability_id": "capability_runtime_artifact_bridge"},
     {"stage": "signal_capture", "capability_id": "canonical_signal_capture"},
+    {"stage": "render_sync_validation", "capability_id": "render_signal_sync_validation"},
     {"stage": "physics_verification", "capability_id": "physics_verifier_truth_gate"},
     {"stage": "dataset_packaging", "capability_id": "dataset_artifact_packaging"},
 )

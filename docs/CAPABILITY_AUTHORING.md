@@ -30,6 +30,7 @@ Capability 必须包含：
 
 - 不要把 capability 写成某个 prompt 模板。
 - 不要把 capability 写成某个具体物体模板，例如“台球编译器”。应抽象成 active/passive contact causality、gravity collision、friction response、restitution envelope、force-field drift 等不变量。
+- 不要为单一 case family 保留 active capability JSON；历史名称只能放在 taxonomy 的 deprecated alias 或兼容读取逻辑中。
 - case family 只能放在 `smoke_cases`、`regression_cases` 和 `cases/templates/` 中。
 - 要写清楚物理因果规则。
 - 要写清楚这个能力属于 pipeline stage、物理约束、校验、资产操作、runtime bridge 还是 dataset packaging。

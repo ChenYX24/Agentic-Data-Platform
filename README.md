@@ -171,10 +171,13 @@ agent-facing compiler capability.
 | `asset_runtime_binding_invocation` | Resolves top-k asset candidates and binds selected real assets or analytic proxies into runtime actors. |
 | `scene_spec_compilation` | Builds runtime scene contracts from capability/case/assets. |
 | `static_scene_placement` | Validates object ids, transforms, support relations, non-overlap, camera coverage, and physics graph membership before runtime. |
+| `runtime_actor_placement_compilation` | Compiles static layout and asset selections into deterministic runtime actor bindings. |
+| `runtime_backend_execution` | Executes UE or labeled debug backend without silent fallback and owns runtime artifact collection. |
 | `physics_property_constraint_validation` | Checks mass, friction, restitution, damping, gravity, material, and parameter-sweep constraints. |
 | `explicit_physics_control_surface` | Represents gravity/material/rigid-body/constraint/force/time controls as typed replayable fields. |
 | `capability_runtime_artifact_bridge` | Adapts runtime artifacts into verifier inputs. |
 | `canonical_signal_capture` | Keeps trajectory, contacts, camera paths, RGB/depth/segmentation, and render metadata on one timebase. |
+| `render_signal_sync_validation` | Validates RGB/depth/segmentation/camera/physics alignment and fails missing views or placeholder passes. |
 | `physics_verifier_truth_gate` | Makes verifier evidence the readiness source of truth instead of UI preview or render success. |
 | `dataset_artifact_packaging` | Packages only readiness-gated artifacts with lineage, hashes, and signal availability. |
 | `pipeline_stage_orchestration` | Keeps capability planning, case spec, scene layout, asset binding, runtime, verifier, diagnosis, and dataset packaging as explicit stages. |
@@ -200,9 +203,10 @@ agent-facing compiler capability.
 | `elastic_constraint_rebound` | Elastic tether or bungee-style constraints must export rest length, extension trace, max-stretch bounds, and rebound velocity toward the anchor. Bungee is one smoke family. |
 | `brittle_impact_fracture` | Brittle/destructible bodies must declare fracture threshold, contact impact energy, fracture events, and fragment evidence. Glass panels, mirrors, cups, and crates are case families. |
 
-`billiard_causality_compiler` is not an active capability. If the legacy JSON is
-present, treat it only as a compatibility alias for old artifacts. New agents
-should use reusable invariants such as `rigid_body_contact_causality`,
+`billiard_causality_compiler` is not an active capability and is no longer
+published as a capability contract. Treat the name only as a deprecated alias
+when reading old artifacts. New agents should use reusable invariants such as
+`rigid_body_contact_causality`,
 `mass_ratio_momentum_transfer`, or `brittle_impact_fracture` depending on what
 must be verified.
 

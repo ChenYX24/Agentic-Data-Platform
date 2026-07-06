@@ -1,0 +1,50 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "render_signal_sync_validation",
+  "description": "Validate that RGB, depth, segmentation, camera trajectory, and physics trace outputs are frame-aligned and complete for every planned view.",
+  "physical_assumptions": [
+    "Render passes are evidence signals and must share the same camera trajectory and frame timebase.",
+    "Depth must come from the declared renderer source, not a placeholder buffer.",
+    "Segmentation should be instance-level when the run is dataset-bound.",
+    "Missing or flat render signals are observability failures."
+  ],
+  "required_signals": [
+    "rgb_frames",
+    "depth_frames",
+    "segmentation_frames",
+    "camera_trajectory",
+    "physics_trace",
+    "render_pass_manifest",
+    "render_sync_report"
+  ],
+  "required_assets": [
+    "planned camera views",
+    "render pass outputs"
+  ],
+  "verifier_rules": [
+    "Every planned camera has RGB/depth/segmentation metadata or a hard failure.",
+    "RGB and depth frame counts match.",
+    "Camera timestamps align with physics trace timestamps.",
+    "Depth variance is non-zero for valid depth buffers.",
+    "Missing views trigger F_VIEW_MISMATCH."
+  ],
+  "failure_taxonomy": [
+    "F_RENDER_SYNC_FAIL",
+    "F_DEPTH_MISSING",
+    "F_VIEW_MISMATCH",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Inspect render_sync_report.json before changing physics parameters.",
+    "Regenerate the run with the same camera plan and render passes.",
+    "Fail the sample instead of substituting placeholder depth or segmentation."
+  ],
+  "smoke_cases": [],
+  "regression_cases": [],
+  "capability_type": "verification",
+  "stage_ids": [
+    "signal_capture",
+    "render_sync_validation",
+    "physics_verification"
+  ]
+}

@@ -7,7 +7,7 @@
 - 场景名不是能力：台球、牛顿摆、单摆、玻璃破碎只是 case family。
 - 能力必须有 contract：required signals、required assets、verifier rules、failure taxonomy、repair suggestions。
 - Agent 应先选能力层，再生成 case/template/scene/runtime 参数。
-- `billiard_causality_compiler` 不作为 active capability。旧 JSON 若存在，只是 legacy artifact alias。
+- `billiard_causality_compiler` 不作为 active capability，也不再作为 `capabilities/*.json` 发布；只在读取旧 artifact 时当 deprecated alias 解释。
 
 ## 1. Pipeline 阶段能力
 
@@ -16,8 +16,11 @@
 | Prompt/task -> case intent | `prompt_case_capability_planning` | prompt, capability profile | capability plan, case family, required signals |
 | Case/assets -> executable scene | `scene_spec_compilation` | case spec, asset resolution | scene spec, collision graph, camera/render requirements |
 | Static scene preflight | `static_scene_placement` | case spec, asset resolution | `scene_layout.json`, object nodes, support relations, non-overlap report, camera plan |
+| Runtime actor placement | `runtime_actor_placement_compilation` | `scene_layout.json`, asset resolution, camera plan | deterministic runtime actor bindings, camera bindings, physics graph bindings |
+| Runtime execution | `runtime_backend_execution` | case spec, actor bindings, render config, backend env | trajectory/contact/camera/render artifacts or explicit preflight/runtime failure |
 | Runtime artifact bridge | `capability_runtime_artifact_bridge` | UE/fallback outputs | normalized trajectory/contact/render artifacts |
 | Signal synchronization | `canonical_signal_capture` | RGB/depth/segmentation/trajectory/contact/camera | aligned signal manifest |
+| Render sync validation | `render_signal_sync_validation` | camera plan, render manifest, RGB/depth/segmentation/camera/physics traces | `render_sync_report.json`, observability failures |
 | Dataset packaging | `dataset_artifact_packaging` | verifier-gated run directory | dataset-ready manifest/package |
 | Full orchestration | `pipeline_stage_orchestration` | stage artifacts | staged lineage and failure attribution |
 
@@ -64,6 +67,13 @@ Physics-critical asset 必须有 collider、mass、rigid body、collision profil
 
 ## 5. 校验能力
 
+校验能力分两层：
+
+| Capability | 职责 |
+|---|---|
+| `render_signal_sync_validation` | 检查 multi-view RGB/depth/segmentation/camera/physics trace 是否帧对齐、视角齐全、depth 非占位。 |
+| `physics_verifier_truth_gate` | 对 schema、initial physics、runtime causality、asset binding 和 render/signal evidence 做最终 readiness 判定。 |
+
 `physics_verifier_truth_gate` 是最终 truth gate。它应分层判断：
 
 - schema validity
@@ -86,8 +96,12 @@ prompt/task
   -> asset_intent_resolution
   -> asset_runtime_binding_invocation
   -> scene_spec_compilation
-  -> runtime backend
+  -> static_scene_placement
+  -> runtime_actor_placement_compilation
+  -> runtime_backend_execution
   -> capability_runtime_artifact_bridge
+  -> canonical_signal_capture
+  -> render_signal_sync_validation
   -> physics_verifier_truth_gate
   -> dataset_artifact_packaging
 ```

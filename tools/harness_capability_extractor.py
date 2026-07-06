@@ -44,6 +44,9 @@ PUBLIC_SOURCE_PATHS = [
     "capabilities/elastic_energy_launch.json",
     "capabilities/brittle_impact_fracture.json",
     "capabilities/capability_runtime_artifact_bridge.json",
+    "capabilities/runtime_actor_placement_compilation.json",
+    "capabilities/runtime_backend_execution.json",
+    "capabilities/render_signal_sync_validation.json",
     "capabilities/asset_intent_resolution.json",
     "capabilities/asset_runtime_binding_invocation.json",
     "capabilities/static_scene_placement.json",
@@ -65,6 +68,7 @@ PUBLIC_SOURCE_PATHS = [
     "harness/runtime/fallback_backend.py",
     "harness/runtime/artifact_collector.py",
     "harness/verification/physics_verifier.py",
+    "harness/verification/contact_causality_verifier.py",
     "harness/verification/static_scene_verifier.py",
     "harness/verification/magnetic_verifier.py",
     "harness/verification/billiards_verifier.py",
@@ -1271,10 +1275,27 @@ def extract_capability_profile(
 def capability_taxonomy() -> dict[str, Any]:
     return {
         "principle": "Active capabilities describe reusable pipeline stages or physics invariants. Scene families such as billiards are smoke/regression cases, not primary capability abstractions.",
+        "pipeline_execution_order": [
+            "prompt_case_capability_planning",
+            "asset_intent_resolution",
+            "scene_spec_compilation",
+            "static_scene_placement",
+            "asset_runtime_binding_invocation",
+            "runtime_actor_placement_compilation",
+            "runtime_backend_execution",
+            "capability_runtime_artifact_bridge",
+            "canonical_signal_capture",
+            "render_signal_sync_validation",
+            "physics_verifier_truth_gate",
+            "dataset_artifact_packaging",
+            "pipeline_stage_orchestration",
+        ],
         "pipeline_stage_capabilities": [
             "prompt_case_capability_planning",
             "scene_spec_compilation",
             "static_scene_placement",
+            "runtime_actor_placement_compilation",
+            "runtime_backend_execution",
             "pipeline_stage_orchestration",
             "capability_runtime_artifact_bridge",
             "canonical_signal_capture",
@@ -1283,6 +1304,10 @@ def capability_taxonomy() -> dict[str, Any]:
         "asset_operation_capabilities": [
             "asset_intent_resolution",
             "asset_runtime_binding_invocation",
+        ],
+        "runtime_bridge_capabilities": [
+            "capability_runtime_artifact_bridge",
+            "canonical_signal_capture",
         ],
         "physical_property_constraint_capabilities": [
             "explicit_physics_control_surface",
@@ -1310,6 +1335,10 @@ def capability_taxonomy() -> dict[str, Any]:
         ],
         "verification_capabilities": [
             "physics_verifier_truth_gate",
+            "render_signal_sync_validation",
+        ],
+        "dataset_packaging_capabilities": [
+            "dataset_artifact_packaging",
         ],
         "deprecated_aliases": {
             "billiard_causality_compiler": "rigid_body_contact_causality"
@@ -1538,7 +1567,7 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
             "## 能力抽象原则",
             "",
             "- capability id 必须命名可复用的不变量或 pipeline 阶段，不能命名成某个单独场景模板。",
-            "- `billiard_causality_compiler` 不作为 active capability；旧 JSON 若存在，只是 legacy artifact alias。",
+            "- `billiard_causality_compiler` 不作为 active capability，也不作为 capability JSON 发布；它只是旧 artifact 的 deprecated alias。",
             "- 台球、保龄球、箱体撞击等都属于 `rigid_body_contact_causality` 的 case family。",
             "- 资产能力拆成 `asset_intent_resolution` 和 `asset_runtime_binding_invocation`：先检索/筛选，再绑定 runtime actor。",
             "- 物理能力必须绑定 verifier invariant、required signals、failure taxonomy 和 repair suggestions。",
@@ -1551,11 +1580,14 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
     )
     taxonomy = profile.get("capability_taxonomy") or {}
     for key in (
+        "pipeline_execution_order",
         "pipeline_stage_capabilities",
         "asset_operation_capabilities",
+        "runtime_bridge_capabilities",
         "physical_property_constraint_capabilities",
         "physics_behavior_capabilities",
         "verification_capabilities",
+        "dataset_packaging_capabilities",
     ):
         values = taxonomy.get(key) or []
         lines.append(f"| `{key}` | {', '.join(f'`{item}`' for item in values)} |")

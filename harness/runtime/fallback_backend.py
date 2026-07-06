@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 import math
 
+from harness.core.capability import canonical_capability_id
 from harness.core.case_spec import CaseSpec
 from harness.runtime.artifact_collector import write_runtime_artifacts
 
@@ -35,7 +36,7 @@ class FallbackBackend:
 
 
 def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
-    capability_id = str(case_spec["capability_id"])
+    capability_id = canonical_capability_id(str(case_spec["capability_id"]))
     case_id = str(case_spec["case_id"])
     if is_contact_causality_capability(capability_id):
         return billiards_trajectory(case_id, case_spec)
@@ -77,7 +78,7 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def is_contact_causality_capability(capability_id: str) -> bool:
-    return capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}
+    return canonical_capability_id(capability_id) == "rigid_body_contact_causality"
 
 
 def billiards_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:

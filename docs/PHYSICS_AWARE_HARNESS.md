@@ -28,13 +28,13 @@ python3.13 scripts/harness_list_capabilities.py
 
 | Layer | Capability Examples | 作用 |
 |---|---|---|
-| Pipeline stages | `prompt_case_capability_planning`, `scene_spec_compilation`, `pipeline_stage_orchestration` | 把 prompt 变成可执行 case 和 stage graph。 |
+| Pipeline stages | `prompt_case_capability_planning`, `scene_spec_compilation`, `static_scene_placement`, `runtime_actor_placement_compilation`, `runtime_backend_execution`, `pipeline_stage_orchestration` | 把 prompt 变成可执行 case、静态布局、runtime actor bindings 和 stage graph。 |
 | Asset operations | `asset_intent_resolution`, `asset_runtime_binding_invocation` | 检索 top-k 资产、选择/降级、绑定 UE actor 和物理 metadata。 |
 | Physics constraints | `rigid_body_contact_causality`, `constraint_distance_pendulum_motion`, `constraint_momentum_transfer`, `explicit_physics_control_surface`, `physics_property_constraint_validation` | 约束运动、材质、质量、摩擦、恢复系数、重力、力场、时间步等。 |
 | Runtime/signal bridge | `capability_runtime_artifact_bridge`, `canonical_signal_capture` | 把 UE/fallback 输出标准化成 trajectory/contact/camera/render evidence。 |
-| Verification/package | `physics_verifier_truth_gate`, `dataset_artifact_packaging` | 以 verifier 为真值门，并只打包 readiness-gated artifacts。 |
+| Verification/package | `render_signal_sync_validation`, `physics_verifier_truth_gate`, `dataset_artifact_packaging` | 先检查 render/signal 同步，再以 physics verifier 为真值门，只打包 readiness-gated artifacts。 |
 
-`billiard_causality_compiler` 不再是 active capability。若仓库里还有旧 JSON，只把它当旧 artifact alias；台球、保龄球、箱体撞击应走 `rigid_body_contact_causality`，质量差异应叠加 `mass_ratio_momentum_transfer`，可破碎对象应走 `brittle_impact_fracture`。
+`billiard_causality_compiler` 不再是 active capability，也不再作为 capability contract 发布。读取旧 artifact 时可把这个名字当 deprecated alias；新 case 中台球、保龄球、箱体撞击应走 `rigid_body_contact_causality`，质量差异应叠加 `mass_ratio_momentum_transfer`，可破碎对象应走 `brittle_impact_fracture`。
 `constraint_distance_pendulum_motion` 同样不是“单摆模板”，而是距离/绳长/关节约束的通用 invariant；单摆只是 smoke case。
 `constraint_momentum_transfer` 也不是“牛顿摆模板”，而是受约束刚体链中的 ordered contact / impulse transfer invariant；牛顿摆只是 smoke case。
 
@@ -126,7 +126,7 @@ python3.13 scripts/harness_build_static_scene.py \
 - 初始状态是否有重叠或支撑穿透；
 - camera plan 是否存在。
 
-UE actor placement compiler 仍是下一阶段工作：它应读取 `scene_layout.json`，在 UE 中创建 actor、设置 transform、collider、mass、material、collision profile 和 camera rig。
+`runtime_actor_placement_compilation` 是下一层 contract：它应读取 `scene_layout.json` 和 asset resolution，在 UE 中创建 actor、设置 transform、collider、mass、material、collision profile 和 camera rig。当前已有 capability contract；真实 UE actor placement 实现仍需要继续接 runner。
 
 ## Stage 4: Runtime Backend
 
