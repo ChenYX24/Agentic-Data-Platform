@@ -1,0 +1,47 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "static_scene_placement",
+  "description": "Build executable object-level scene layouts before simulation, including support surfaces, non-overlap placement, scale, orientation, camera coverage, and physics graph membership.",
+  "physical_assumptions": [
+    "A physical simulation starts from a valid static scene state.",
+    "Physics-critical objects require stable ids, roles, transforms, colliders, mass/material metadata, and collision profiles.",
+    "Initial overlap and unsupported placement should be caught before runtime.",
+    "Camera and lighting plans are evidence requirements, not decorative UI settings."
+  ],
+  "required_signals": [
+    "case_spec",
+    "asset_resolution",
+    "scene_layout",
+    "camera_plan",
+    "static_scene_report"
+  ],
+  "required_assets": [
+    "asset registry",
+    "physics-critical meshes or analytic proxies",
+    "camera rig definitions"
+  ],
+  "verifier_rules": [
+    "Objects have unique ids and roles.",
+    "Physics-critical assets have collider, mass/material, and collision profile.",
+    "Initial transforms avoid invalid overlap unless the case is a negative overlap test.",
+    "Support/contact-at-rest relationships are explicit.",
+    "Required camera views cover the event region."
+  ],
+  "failure_taxonomy": [
+    "F1_scene_parsing_failure",
+    "F2_asset_missing",
+    "F3_invalid_initial_physics_state",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Generate scene_layout.json before runtime execution.",
+    "Bind missing physics metadata or mark an analytic proxy.",
+    "Adjust object positions, scales, and support surfaces.",
+    "Regenerate camera plan around the event bounds."
+  ],
+  "smoke_cases": [
+    "cases/billiards/six_ball_triangle_low_speed.json",
+    "cases/ramp/ramp_roll_low_friction.json"
+  ],
+  "regression_cases": []
+}

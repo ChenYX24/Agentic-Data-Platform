@@ -23,7 +23,7 @@ TEMPLATE_SCHEMA_VERSION = "harness_case_template_v1"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate parameterized harness case specs from a template.")
     parser.add_argument("--template", help="Path to cases/templates/*.template.json")
-    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "basic_physics"], help="Named case suite shortcut.")
+    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "basic_physics"], help="Named case suite shortcut.")
     parser.add_argument("--num-cases", type=int, help="Number of case specs to generate.")
     parser.add_argument("--count", type=int, help="Alias for --num-cases.")
     parser.add_argument("--seed", type=int, default=0, help="Deterministic generation seed.")
@@ -91,6 +91,7 @@ def template_for_suite(suite: str | None) -> str | None:
         "domino": "cases/templates/domino_chain.template.json",
         "falling": "cases/templates/falling_blocks.template.json",
         "ramp": "cases/templates/ramp_sliding.template.json",
+        "projectile": "cases/templates/projectile_motion.template.json",
         "basic_physics": "cases/templates/falling_blocks.template.json",
     }[suite]
 
@@ -122,6 +123,8 @@ def generate_case(template: dict[str, Any], rng: random.Random, *, index: int, s
         return falling_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     if template_id == "ramp_sliding":
         return ramp_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    if template_id == "projectile_motion":
+        return projectile_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     raise ValueError(f"unsupported runnable template: {template_id}")
 
 
@@ -319,6 +322,48 @@ def ramp_expected_travel(slope_angle_deg: float, friction_dynamic: float) -> flo
     return round(1.6 * slope_factor * friction_factor, 4)
 
 
+def projectile_case(template: dict[str, Any], params: dict[str, Any], *, index: int, seed: int, should_pass: bool, negative_mode: str | None) -> dict[str, Any]:
+    speed = float(params["launch_speed_m_s"])
+    angle = float(params["launch_angle_deg"])
+    angle_rad = math.radians(angle)
+    vx = round(speed * math.cos(angle_rad), 4)
+    vz = round(speed * math.sin(angle_rad), 4)
+    gravity = float(params["gravity_m_s2"])
+    time_to_ground = max(0.2, (vz + math.sqrt(max(vz * vz + 2 * gravity * 0.18, 0.0))) / gravity)
+    expected_range = vx * time_to_ground
+    objects = [
+        {
+            "id": "projectile",
+            "role": "projectile",
+            "shape": "sphere",
+            "radius_m": 0.1,
+            "mass_kg": params["projectile_mass_kg"],
+            "initial_position_m": [0.0, 0.0, 0.18],
+            "initial_velocity_m_s": [vx, 0.0, vz],
+        },
+        {"id": "ground", "role": "ground", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]},
+    ]
+    case = base_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    case.update(
+        {
+            "prompt": f"Generated projectile case: a rigid body is launched at {angle:.1f} degrees and follows gravity until landing.",
+            "expected_physics": {
+                "coordinate_system": "z_up",
+                "gravity_m_s2": gravity,
+                "launch_angle_deg": angle,
+                "launch_speed_m_s": speed,
+                "expected_min_forward_displacement_m": round(max(0.08, expected_range * 0.25), 4),
+                "expected_range_proxy_m": round(expected_range, 4),
+                "support": "ground",
+            },
+            "objects": objects,
+            "active_objects": ["projectile"],
+            "passive_objects": [],
+        }
+    )
+    return add_m2_case_contract(case, template, params)
+
+
 def add_m2_case_contract(case: dict[str, Any], template: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     expected_physics = dict(case.get("expected_physics") or {})
     camera_policy = dict(template.get("camera_policy") or {})
@@ -372,7 +417,7 @@ def add_m2_case_contract(case: dict[str, Any], template: dict[str, Any], params:
 def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
     capability_id = str(case.get("capability_id"))
     expected_physics = dict(case.get("expected_physics") or {})
-    if capability_id == "billiard_causality_compiler":
+    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
         return {"type": "rigid_body_contact", "collision_graph": expected_physics.get("collision_graph", [])}
     if capability_id == "sequential_contact_propagation":
         return {"type": "ordered_contact_chain", "ordered_chain": expected_physics.get("ordered_chain", [])}
@@ -380,11 +425,13 @@ def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
         return {"type": "gravity_support_contact", "support": expected_physics.get("support", "floor")}
     if capability_id == "ramp_sliding_friction":
         return {"type": "friction_sensitive_downhill_motion", "contact_surface": expected_physics.get("contact_surface", "ramp")}
+    if capability_id == "projectile_gravity_motion":
+        return {"type": "projectile_landing", "support": expected_physics.get("support", "ground")}
     return {"type": "trajectory_event"}
 
 
 def required_signals_for(capability_id: str) -> list[str]:
-    if capability_id == "billiard_causality_compiler":
+    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
         return ["trajectory", "contact_events", "camera_trajectory"]
     if capability_id == "sequential_contact_propagation":
         return ["trajectory", "contact_events", "rotation"]
@@ -392,6 +439,8 @@ def required_signals_for(capability_id: str) -> list[str]:
         return ["trajectory", "contact_events", "gravity_label"]
     if capability_id == "ramp_sliding_friction":
         return ["trajectory", "contact_events", "ramp_angle_label", "material_friction_label"]
+    if capability_id == "projectile_gravity_motion":
+        return ["trajectory", "contact_events", "gravity_label", "initial_velocity"]
     return ["trajectory"]
 
 

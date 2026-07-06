@@ -1,0 +1,25 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "upward_throw_arc",
+  "capability_id": "projectile_gravity_motion",
+  "prompt": "A rigid ball is thrown upward and forward. It rises to an apex, descends under gravity, and lands on the ground.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "gravity_m_s2": 9.81,
+    "launch_angle_deg": 58.0,
+    "launch_speed_m_s": 4.2,
+    "expected_min_forward_displacement_m": 0.55,
+    "support": "ground"
+  },
+  "objects": [
+    {"id": "projectile", "role": "projectile", "shape": "sphere", "radius_m": 0.1, "mass_kg": 0.4, "initial_position_m": [0.0, 0.0, 0.18], "initial_velocity_m_s": [2.2258, 0.0, 3.5618]},
+    {"id": "ground", "role": "ground", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["projectile"],
+  "passive_objects": [],
+  "required_assets": ["projectile rigid body", "ground collider"],
+  "required_signals": ["trajectory", "contact_events", "gravity_label", "initial_velocity"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Positive projectile case: z rises then descends, x advances, and landing contact is recorded."
+}

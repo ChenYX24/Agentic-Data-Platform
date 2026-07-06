@@ -83,7 +83,7 @@ def run_closed_loop_demo(root: str | Path = ROOT, *, timestamp: str | None = Non
 
 def simulate_execution_trace(case_id: str, plan: dict[str, Any]) -> dict[str, Any]:
     capability_id = plan["primary_capability_id"]
-    if capability_id == "billiard_causality_compiler":
+    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
         return billiards_trace(case_id, plan)
     if capability_id == "rigid_body_gravity_collision":
         return falling_blocks_trace(case_id, plan)

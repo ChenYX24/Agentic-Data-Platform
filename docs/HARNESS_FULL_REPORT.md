@@ -71,15 +71,28 @@ assets/*.local.json
 
 ## 3. 当前已有能力
 
+### 3.1 Pipeline / Agent 阶段能力
+
 | Capability | 当前状态 | 验证内容 |
 |---|---|---|
-| `billiard_causality_compiler` | 已可用 | cue ball 可以主动运动；target balls 初始必须静止，只能 contact 后运动。 |
+| `pipeline_stage_orchestration` | 已可用 | 将 capability planning、case spec、scene layout、asset binding、runtime、verifier、diagnosis、dataset packaging 作为显式阶段，不允许 silent fallback。 |
+| `asset_intent_resolution` | 已可用 | 区分 physics-critical、visual-only、skeletal/animation、blueprint/logic、scene/map 等资产意图，并检索候选资产。 |
+| `asset_runtime_binding_invocation` | 已可用 | 记录 top-k candidates、selected asset、proxy fallback reason，并要求 runtime actor binding 对齐 object id。 |
+| `static_scene_placement` | 新增 contract | 在 runtime 前检查 object id、transform、support relation、non-overlap、camera coverage 和 physics graph membership。 |
+| `scene_spec_compilation` | 部分可用 | 定义 scene spec contract；完整 placement solver 仍是 TODO。 |
+| `physics_property_constraint_validation` | 新增 contract | 检查 mass、friction、restitution、damping、gravity、material、parameter sweep 的结构化范围和方向性响应。 |
+| `capability_runtime_artifact_bridge` | 已可用 | 把 runtime artifact 标准化为 verifier 输入。 |
+
+### 3.2 物理行为能力 / Case Family
+
+| Capability | 当前状态 | 验证内容 |
+|---|---|---|
+| `rigid_body_contact_causality` | 已可用 | active body 可以主动运动；passive rigid bodies 初始必须静止，只能 runtime contact 后运动。台球只是其中一个 smoke family。 |
+| `billiard_causality_compiler` | 兼容 alias | 仅保留旧脚本/旧 profile 兼容；新 planner、case template、文档不再把它作为核心能力。 |
 | `sequential_contact_propagation` | 已可用 | domino/chain reaction 必须按 contact 顺序传播。 |
 | `rigid_body_gravity_collision` | 已可用 | falling object 必须下降，并产生 support contact。 |
 | `ramp_sliding_friction` | 当前 ramp 分支已可用 | 物体沿斜面下滑，z 下降，位移符合 friction-aware 范围。 |
-| `asset_intent_resolution` | 已可用 | 区分 physics-critical 和 visual-only 资产，并检索候选资产。 |
-| `scene_spec_compilation` | 部分可用 | 定义 scene spec contract；完整 placement solver 仍是 TODO。 |
-| `capability_runtime_artifact_bridge` | 已可用 | 把 runtime artifact 标准化为 verifier 输入。 |
+| `projectile_gravity_motion` | 当前分支已可用 | 抛体必须上升到 apex、随后下降、向前位移并产生落地 contact。 |
 
 注意：如果从 `main` 使用，`ramp_sliding_friction` 需要先合并当前 ramp 分支。
 
@@ -263,6 +276,7 @@ tests/test_harness_<family>_verifier.py
 | `domino_chain.template.json` | `--suite domino` | 可运行 | 顺序 contact propagation。 |
 | `falling_blocks.template.json` | `--suite falling` | 可运行 | 重力/support contact。 |
 | `ramp_sliding.template.json` | `--suite ramp` | 当前 ramp 分支可运行 | 斜面摩擦响应。 |
+| `projectile_motion.template.json` | `--suite projectile` | 当前分支可运行 | 上抛/抛体轨迹、apex/descent/landing contact。 |
 | `pendulum_contact.template.json` | 暂无 suite | contract-only | 约束/contact motion TODO。 |
 
 生成 case：
@@ -351,6 +365,12 @@ python3.13 scripts/harness_run_case_batch.py cases/generated/pdf_ramp_seed45 --b
 # 10 cases: 7 positive pass, 3 negative caught, unexpected 0
 ```
 
+```bash
+python3.13 scripts/harness_generate_cases.py --suite projectile --count 10 --seed 46 --out cases/generated/projectile_seed46
+python3.13 scripts/harness_run_case_batch.py cases/generated/projectile_seed46 --backend fallback
+# 10 cases: 7 positive pass, 3 negative caught, unexpected 0
+```
+
 静态资产解析：
 
 - 台球三角阵 case：8/8 physics-critical assets resolved。
@@ -358,7 +378,7 @@ python3.13 scripts/harness_run_case_batch.py cases/generated/pdf_ramp_seed45 --b
 
 ## 13. PDF 派生物理 TODO
 
-来源：`/Users/cyx/Downloads/物理模拟场景.pdf`。
+来源：用户提供的物理模拟场景 PDF。public 文档不保留本机绝对路径。
 
 PDF 隐含的统一参数体系：
 
@@ -373,9 +393,9 @@ TODO：
 
 | 优先级 | Case | Harness capability | 状态 |
 |---|---|---|---|
-| P0 | 台球碰撞 | `billiard_causality_compiler` | fallback/verifier 已有；UE contact path TODO |
+| P0 | 台球/保龄球/球体接触碰撞 | `rigid_body_contact_causality` | fallback/verifier 已有；台球是 case family；UE contact path TODO |
 | P0 | 多米诺/保龄球链式碰撞 | `sequential_contact_propagation` 扩展 | domino 已有；bowling TODO |
-| P0 | 掉落/上抛/抛体 | `projectile_gravity_motion` | TODO |
+| P0 | 掉落/上抛/抛体 | `projectile_gravity_motion` | 当前分支已有 fallback/verifier；UE TODO |
 | P0 | 斜面滚动/下滑/上滚 | `ramp_sliding_friction` | ramp 分支已有 fallback/verifier；UE TODO |
 | P1 | 皮球反弹 | `bounce_restitution_ball` | TODO |
 | P1 | 牛顿摆 | `constraint_momentum_transfer` | TODO |
@@ -390,9 +410,9 @@ TODO：
 
 1. 提交当前 ramp 和 static asset resolver 改动。
 2. 做 `static_scene_builder` 和 `static_scene_verifier`。
-3. 做 `projectile_gravity_motion`。
-4. 做 `bounce_restitution_ball`。
-5. 回到 UE，让 billiards/ramp/falling 通过真实 trajectory/contact verifier。
+3. 做 `bounce_restitution_ball`。
+4. 做 `static_scene_builder + static_scene_verifier`。
+5. 回到 UE，让 billiards/ramp/falling/projectile 通过真实 trajectory/contact verifier。
 
 ## 14. 其他人如何扩展/优化 harness
 

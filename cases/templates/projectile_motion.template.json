@@ -1,0 +1,30 @@
+{
+  "schema_version": "harness_case_template_v1",
+  "template_id": "projectile_motion",
+  "capability_id": "projectile_gravity_motion",
+  "description": "Runnable template for upward throw/projectile motion with gravity, apex, descent, and landing contact.",
+  "fallback_supported": true,
+  "parameter_ranges": {
+    "launch_speed_m_s": {"type": "float", "min": 2.2, "max": 6.0},
+    "launch_angle_deg": {"type": "float", "min": 25.0, "max": 70.0},
+    "projectile_mass_kg": {"type": "float", "min": 0.1, "max": 3.0},
+    "gravity_m_s2": {"type": "float", "min": 9.81, "max": 9.81}
+  },
+  "object_count_ranges": {
+    "projectile": {"min": 1, "max": 1},
+    "ground": {"min": 1, "max": 1}
+  },
+  "physics_critical_assets": ["projectile rigid body", "ground collider"],
+  "visual_only_assets": ["trajectory guide material"],
+  "camera_policy": {"default": "side_static", "allowed": ["side_static", "tracking_subject", "top_down"]},
+  "perturbation_policy": {"positive_ratio": 0.7, "vary": ["launch_speed_m_s", "launch_angle_deg"], "lock": ["seed", "gravity_m_s2"]},
+  "expected_invariants": [
+    "apex_after_launch",
+    "descent_after_apex",
+    "forward_displacement_positive",
+    "landing_contact_required"
+  ],
+  "negative_modes": ["no_gravity_float", "missing_landing_contact"],
+  "seed_policy": {"deterministic": true, "record_parameter_sample": true},
+  "expected_artifact_contract": ["trajectory", "contact_events", "gravity_label", "initial_velocity"]
+}

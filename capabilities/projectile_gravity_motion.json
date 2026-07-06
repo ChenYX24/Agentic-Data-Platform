@@ -1,0 +1,48 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "projectile_gravity_motion",
+  "description": "Compile upward-throw/projectile prompts into gravity-driven trajectories with apex, descent, and landing contact evidence.",
+  "physical_assumptions": [
+    "The harness coordinate system is z-up.",
+    "Projectile bodies have gravity enabled after initial launch.",
+    "Horizontal velocity should carry the projectile forward unless drag is explicitly modeled.",
+    "The vertical trajectory should rise to an apex and then descend under gravity before ground contact."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "gravity_label",
+    "initial_velocity"
+  ],
+  "required_assets": [
+    "projectile rigid body",
+    "ground collider",
+    "physics material"
+  ],
+  "verifier_rules": [
+    "Projectile z increases after launch and later decreases.",
+    "Projectile x displacement is positive for positive x launch velocity.",
+    "Landing/support contact exists.",
+    "Projectile must not float at the final frame without contact."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Set a structured initial velocity instead of keyframing the path.",
+    "Enable gravity on the projectile.",
+    "Add ground collider and contact event capture.",
+    "Check z-up coordinate labels and frame timestamps."
+  ],
+  "smoke_cases": [
+    "cases/projectile/upward_throw_arc.json",
+    "cases/projectile/low_angle_forward_throw.json"
+  ],
+  "regression_cases": [
+    "cases/projectile/negative_no_gravity_float.json",
+    "cases/projectile/negative_missing_landing_contact.json"
+  ]
+}

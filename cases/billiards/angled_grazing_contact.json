@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_case_spec_v1",
   "case_id": "angled_grazing_contact",
-  "capability_id": "billiard_causality_compiler",
+  "capability_id": "rigid_body_contact_causality",
   "prompt": "Cue ball approaches at a shallow angle and grazes the first passive target ball. Passive targets must not move before contact.",
   "task_type": "billiards_collision",
   "scene": {"layout": "flat_table_offset_targets", "duration_s": 3.0, "coordinate_system": "z_up"},

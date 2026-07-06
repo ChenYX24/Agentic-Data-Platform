@@ -37,7 +37,7 @@ class FallbackBackend:
 def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
     capability_id = str(case_spec["capability_id"])
     case_id = str(case_spec["case_id"])
-    if capability_id == "billiard_causality_compiler":
+    if is_contact_causality_capability(capability_id):
         return billiards_trajectory(case_id, case_spec)
     if capability_id == "sequential_contact_propagation":
         return domino_trajectory(case_id, case_spec)
@@ -45,7 +45,13 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
         return falling_trajectory(case_id, case_spec)
     if capability_id == "ramp_sliding_friction":
         return ramp_trajectory(case_id, case_spec)
+    if capability_id == "projectile_gravity_motion":
+        return projectile_trajectory(case_id, case_spec)
     return []
+
+
+def is_contact_causality_capability(capability_id: str) -> bool:
+    return capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}
 
 
 def billiards_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -176,6 +182,37 @@ def ramp_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, A
     }
     contacts = [] if negative_mode == "missing_contact" else [contact(subject_id, ramp_id, 1, 0.2), contact(subject_id, ramp_id, 2, 0.4)]
     return [frame(0, 0.0, initial), frame(1, 0.2, mid, contacts=contacts[:1]), frame(2, 0.4, final, contacts=contacts[1:])]
+
+
+def projectile_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    negative_mode = str(case_spec.get("negative_mode") or "")
+    if not negative_mode and "no_gravity" in case_id:
+        negative_mode = "no_gravity_float"
+    object_specs = {str(obj.get("id")): obj for obj in case_spec.get("objects", []) if isinstance(obj, dict)}
+    projectile_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"projectile", "thrown_body", "launched_body"}), "projectile")
+    ground_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"support", "ground", "floor"}), "ground")
+    projectile_spec = object_specs.get(projectile_id) or {"initial_position_m": [0.0, 0.0, 0.2], "initial_velocity_m_s": [2.0, 0.0, 3.0]}
+    ground_state = state(vec3((object_specs.get(ground_id) or {}).get("initial_position_m") or [0.0, 0.0, 0.0]), [0, 0, 0])
+    p0 = vec3(projectile_spec.get("initial_position_m") or [0.0, 0.0, 0.2])
+    v0 = vec3(projectile_spec.get("initial_velocity_m_s") or [2.0, 0.0, 3.0])
+    if negative_mode == "no_gravity_float":
+        frames = []
+        for frame_id, time_s in enumerate([0.0, 0.2, 0.4]):
+            position = [round(p0[0] + v0[0] * time_s, 4), p0[1], round(p0[2] + max(v0[2], 0.8) * time_s, 4)]
+            frames.append(frame(frame_id, time_s, {ground_id: ground_state, projectile_id: state(position, v0)}))
+        return frames
+    gravity = float((case_spec.get("expected_physics") or {}).get("gravity_m_s2") or 9.81)
+    sample_times = [0.0, 0.25, 0.5, 0.75]
+    frames = []
+    for frame_id, time_s in enumerate(sample_times):
+        z = p0[2] + v0[2] * time_s - 0.5 * gravity * time_s * time_s
+        if frame_id == len(sample_times) - 1:
+            z = max(0.1, min(z, 0.12))
+        vz = v0[2] - gravity * time_s
+        position = [round(p0[0] + v0[0] * time_s, 4), p0[1], round(z, 4)]
+        contacts = [] if negative_mode == "missing_landing_contact" or frame_id < len(sample_times) - 1 else [contact(projectile_id, ground_id, frame_id, time_s)]
+        frames.append(frame(frame_id, time_s, {ground_id: ground_state, projectile_id: state(position, [round(v0[0], 4), 0.0, round(vz, 4)])}, contacts=contacts))
+    return frames
 
 
 def state(position: list[float], velocity: list[float], *, rotation: list[float] | None = None) -> dict[str, Any]:

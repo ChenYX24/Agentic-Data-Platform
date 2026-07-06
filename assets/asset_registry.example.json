@@ -64,6 +64,23 @@
       },
       "collision_profile": "PhysicsActor",
       "proxy": true
+    },
+    {
+      "asset_id": "analytic_projectile_sphere",
+      "category": "physics_critical",
+      "type": "static_mesh",
+      "tags": ["projectile", "thrown_body", "launched_body", "sphere", "ball"],
+      "ue_path": "/Engine/BasicShapes/Sphere.Sphere",
+      "collider": "sphere",
+      "radius_m": 0.1,
+      "mass_kg": 0.5,
+      "material": {
+        "static_friction": 0.35,
+        "dynamic_friction": 0.25,
+        "restitution": 0.45
+      },
+      "collision_profile": "PhysicsActor",
+      "proxy": true
     }
   ]
 }

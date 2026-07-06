@@ -20,13 +20,14 @@ class CapabilityClosedLoopTests(unittest.TestCase):
         self.verifier = CapabilityVerifier()
 
     def test_capability_profile_can_be_read_by_planner(self) -> None:
+        self.assertTrue(self.planner.profile.has("rigid_body_contact_causality"))
         self.assertTrue(self.planner.profile.has("billiard_causality_compiler"))
         self.assertTrue(self.planner.profile.has("rigid_body_gravity_collision"))
         self.assertTrue(self.planner.profile.has("sequential_contact_propagation"))
 
-    def test_billiards_prompt_maps_to_billiard_causality(self) -> None:
+    def test_billiards_prompt_maps_to_generic_contact_causality(self) -> None:
         plan = self.planner.plan("A pool table with a cue ball hitting passive target balls.")
-        self.assertEqual(plan["primary_capability_id"], "billiard_causality_compiler")
+        self.assertEqual(plan["primary_capability_id"], "rigid_body_contact_causality")
 
     def test_falling_blocks_prompt_maps_to_gravity_collision(self) -> None:
         plan = self.planner.plan("Falling blocks under gravity collide with the ground.")

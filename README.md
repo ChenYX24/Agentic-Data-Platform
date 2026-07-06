@@ -150,14 +150,27 @@ Current renderer status:
 
 ## Capabilities
 
-| Capability | Current Role |
+The harness separates reusable pipeline-stage capabilities from physics case
+families. Billiards is now one smoke family under generic contact causality; the
+old `billiard_causality_compiler` id remains only as a compatibility alias.
+
+| Pipeline Capability | Current Role |
 |---|---|
-| `billiard_causality_compiler` | Active cue ball may move; passive target balls must remain still until contact. |
+| `asset_intent_resolution` | Classifies physics-critical vs visual-only assets. |
+| `asset_runtime_binding_invocation` | Resolves top-k asset candidates and binds selected real assets or analytic proxies into runtime actors. |
+| `scene_spec_compilation` | Builds runtime scene contracts from capability/case/assets. |
+| `static_scene_placement` | Validates object ids, transforms, support relations, non-overlap, camera coverage, and physics graph membership before runtime. |
+| `physics_property_constraint_validation` | Checks mass, friction, restitution, damping, gravity, material, and parameter-sweep constraints. |
+| `capability_runtime_artifact_bridge` | Adapts runtime artifacts into verifier inputs. |
+| `pipeline_stage_orchestration` | Keeps capability planning, case spec, scene layout, asset binding, runtime, verifier, diagnosis, and dataset packaging as explicit stages. |
+
+| Physics Capability | Current Role |
+|---|---|
+| `rigid_body_contact_causality` | Active bodies may move; passive rigid bodies must remain still until runtime contact evidence. Billiards/pool is one case family. |
 | `sequential_contact_propagation` | Domino/chain activation order must be contact-driven. |
 | `rigid_body_gravity_collision` | Falling bodies should descend and contact support. |
-| `asset_intent_resolution` | Classifies physics-critical vs visual-only assets. |
-| `scene_spec_compilation` | Builds runtime scene contracts from capability/case/assets. |
-| `capability_runtime_artifact_bridge` | Adapts runtime artifacts into verifier inputs. |
+| `ramp_sliding_friction` | Rolling/sliding bodies on an inclined plane must respond to gravity and friction. |
+| `projectile_gravity_motion` | Thrown bodies must show launch, apex/descent, forward displacement, and landing/contact evidence. |
 
 The billiards cases include the old failure mode that produced plausible-looking
 videos by giving passive balls hidden velocity. The verifier rejects that:

@@ -27,11 +27,12 @@ class HarnessAssetIntentTests(unittest.TestCase):
             "objects": [
                 {"id": "cue_ball", "role": "active_striker", "shape": "sphere"},
                 {"id": "ramp", "role": "ramp", "shape": "inclined_plane"},
+                {"id": "projectile", "role": "projectile", "shape": "sphere"},
             ],
         }
         result = resolve_asset_intents(case_spec, top_k=2)
         self.assertEqual(result["case_id"], "asset_smoke")
-        self.assertEqual(len(result["assets"]), 2)
+        self.assertEqual(len(result["assets"]), 3)
         self.assertTrue(all(row["selected_asset"] for row in result["assets"]))
 
 

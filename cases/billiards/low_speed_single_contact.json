@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_case_spec_v1",
   "case_id": "low_speed_single_contact",
-  "capability_id": "billiard_causality_compiler",
+  "capability_id": "rigid_body_contact_causality",
   "prompt": "A low-speed cue ball hits one passive target ball on a flat low-friction table.",
   "expected_physics": {
     "speed": "low",

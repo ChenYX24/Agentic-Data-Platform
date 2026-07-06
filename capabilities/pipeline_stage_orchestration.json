@@ -1,0 +1,46 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "pipeline_stage_orchestration",
+  "description": "Coordinate the harness stages from prompt/case planning through scene layout, asset binding, runtime execution, artifact collection, verification, diagnosis, and dataset packaging.",
+  "physical_assumptions": [
+    "Each stage has structured inputs and outputs.",
+    "Runtime failures must be represented as explicit artifacts, not silent fallbacks.",
+    "Verifier decisions should be based on runtime evidence rather than UI state.",
+    "Generated dataset packages must preserve lineage from prompt/case to artifacts."
+  ],
+  "required_signals": [
+    "capability_plan",
+    "case_spec",
+    "scene_layout",
+    "asset_resolution",
+    "runtime_artifacts",
+    "verifier_report",
+    "dataset_manifest"
+  ],
+  "required_assets": [
+    "case library",
+    "asset registry",
+    "runtime backend"
+  ],
+  "verifier_rules": [
+    "Each stage writes its machine-readable artifact.",
+    "No stage hides a failure behind fallback success.",
+    "Artifact schema versions are present and compatible.",
+    "Dataset package references only existing artifacts."
+  ],
+  "failure_taxonomy": [
+    "F1_scene_parsing_failure",
+    "F2_asset_missing",
+    "F6_runtime_or_render_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Rerun from the failed stage using the previous artifact as input.",
+    "Inspect verifier_report.json and run_readiness.json before modifying runtime code.",
+    "Keep generated cases and runs out of public git commits."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json"
+  ],
+  "regression_cases": []
+}

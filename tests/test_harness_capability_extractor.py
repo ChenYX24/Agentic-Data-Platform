@@ -9,7 +9,7 @@ from tools.harness_capability_extractor import extract_capability_profile, rende
 
 
 class HarnessCapabilityExtractorTests(unittest.TestCase):
-    def test_extracts_billiard_causality_from_project_memory(self) -> None:
+    def test_extracts_generic_contact_causality_from_project_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "MEMORY.md").write_text(
@@ -28,9 +28,9 @@ class HarnessCapabilityExtractorTests(unittest.TestCase):
                 include_private_sources=True,
             )
             capabilities = {capability["id"]: capability for capability in profile["capabilities"]}
-            billiard = capabilities["billiard_causality_compiler"]
-            self.assertGreaterEqual(billiard["evidence_count"], 2)
-            self.assertIn("Passive target bodies start with zero linear and angular velocity.", billiard["runtime_contract"])
+            contact = capabilities["rigid_body_contact_causality"]
+            self.assertGreaterEqual(contact["evidence_count"], 2)
+            self.assertIn("Passive bodies start with zero unexplained linear and angular velocity.", contact["runtime_contract"])
             self.assertIn("Reject if passive targets move above threshold before first active contact.", profile["billiard_reference_workflow"][4]["contract"])
 
     def test_public_profile_suppresses_private_sources(self) -> None:
@@ -45,9 +45,9 @@ class HarnessCapabilityExtractorTests(unittest.TestCase):
                 source_preset="local",
                 include_private_sources=False,
             )
-            billiard = next(capability for capability in profile["capabilities"] if capability["id"] == "billiard_causality_compiler")
-            self.assertEqual(billiard["evidence"], [])
-            self.assertGreaterEqual(billiard["private_evidence_suppressed"], 1)
+            contact = next(capability for capability in profile["capabilities"] if capability["id"] == "rigid_body_contact_causality")
+            self.assertEqual(contact["evidence"], [])
+            self.assertGreaterEqual(contact["private_evidence_suppressed"], 1)
 
     def test_profile_and_markdown_are_serializable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

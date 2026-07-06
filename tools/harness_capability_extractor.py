@@ -20,11 +20,18 @@ PUBLIC_SOURCE_PATHS = [
     "docs/CAPABILITY_AUTHORING.md",
     "docs/OPTIONAL_VIEWER.md",
     "docs/PHYSICS_AWARE_HARNESS.md",
+    "capabilities/rigid_body_contact_causality.json",
     "capabilities/billiard_causality_compiler.json",
     "capabilities/rigid_body_gravity_collision.json",
     "capabilities/sequential_contact_propagation.json",
+    "capabilities/ramp_sliding_friction.json",
+    "capabilities/projectile_gravity_motion.json",
     "capabilities/capability_runtime_artifact_bridge.json",
     "capabilities/asset_intent_resolution.json",
+    "capabilities/asset_runtime_binding_invocation.json",
+    "capabilities/static_scene_placement.json",
+    "capabilities/physics_property_constraint_validation.json",
+    "capabilities/pipeline_stage_orchestration.json",
     "capabilities/scene_spec_compilation.json",
     "tools/causal_motion.py",
     "tools/capability_planner.py",
@@ -155,15 +162,19 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         ),
     ),
     CapabilitySpec(
-        capability_id="billiard_causality_compiler",
-        title="Billiard-Style Causal Collision Compiler",
+        capability_id="rigid_body_contact_causality",
+        title="Generic Rigid-Body Contact Causality",
         pattern_type="FLOW",
-        stage_ids=("planner", "physics_control", "runtime", "verifier"),
+        stage_ids=("capability_planning", "case_spec_compilation", "scene_spec_compilation", "runtime_artifact_collection", "physics_verification"),
         keywords=(
             "台球",
             "billiard",
+            "pool",
             "cue",
             "cue_ball",
+            "ball collision",
+            "collision",
+            "contact graph",
             "target balls",
             "passive",
             "被动",
@@ -175,27 +186,27 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
             "initial velocity",
             "contact events",
         ),
-        description="Turn prompts such as a cue ball hitting a rack into a causal rigid-body program: only the driver has initial motion; target bodies move after contact evidence exists.",
+        description="Compile active-to-passive rigid-body contact scenes into causal simulation programs where passive bodies move only after runtime contact evidence exists.",
         prompt_moves=(
-            "Express one active striker and a passive target group.",
-            "Let the LLM infer reasonable mass, radius, friction, and restitution, but keep passive initial velocity at zero.",
-            "Use speed wording such as slow, medium, or fast as control intent, not as a template selection.",
+            "Identify active bodies, passive bodies, collision graph, initial velocities, and expected contact propagation.",
+            "Let the planner infer mass, shape, friction, and restitution, but keep passive initial velocity at zero unless explicitly active.",
+            "Use speed wording as control intent while preserving contact-driven passive motion.",
         ),
         runtime_contract=(
-            "Cue or driver body may have initial velocity or impulse.",
-            "Passive target bodies start with zero linear and angular velocity.",
-            "Collision geometry must not overlap at t=0; small spheres keep their explicit radius instead of being clamped larger.",
-            "Trajectory and contact events are the only source of post-contact target motion.",
+            "Active bodies may receive initial velocity or impulse.",
+            "Passive bodies start with zero unexplained linear and angular velocity.",
+            "Collision geometry must not overlap at t=0.",
+            "Trajectory and contact events are the only accepted source of passive post-contact motion.",
         ),
         verifier_checks=(
-            "First active contact exists between driver and target group.",
-            "Passive pre-contact speed stays below threshold.",
-            "Post-contact target displacement or spread matches requested intensity.",
-            "Contact events include the expected driver-target pair and optional secondary contacts.",
+            "First active-to-passive contact exists.",
+            "Passive pre-contact speed and displacement stay below threshold.",
+            "Post-contact passive motion is explainable by the contact graph.",
+            "Contact events include expected active-passive and optional secondary pairs.",
         ),
         failure_modes=(
-            "Targets move before contact because of initial velocity leakage.",
-            "Targets move before contact because colliders overlap at t=0.",
+            "Passive bodies move before contact because of initial velocity leakage.",
+            "Passive bodies move before contact because colliders overlap at t=0.",
             "LLM scale is interpreted as radius in one stage and diameter in another.",
             "A visually good render is accepted without trajectory causality evidence.",
         ),
@@ -783,7 +794,7 @@ def build_capability(
         if not matched:
             continue
         score = len(matched)
-        if spec.capability_id == "billiard_causality_compiler" and any(term in lower for term in ("billiard", "台球", "cue_ball")):
+        if spec.capability_id == "rigid_body_contact_causality" and any(term in lower for term in ("billiard", "台球", "cue_ball", "contact")):
             score += 2
         if any(term in lower for term in ("fail", "失败", "violation", "reference_ready=false", "自走")):
             score += 1
@@ -942,13 +953,13 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
             for evidence in capability["evidence"][:3]:
                 lines.append(f"- `{evidence['source']}`: {evidence['text']}")
         lines.append("")
-    lines.extend(["## Billiard Reference Workflow", ""])
+    lines.extend(["## Rigid-Body Contact Reference Workflow", ""])
     for step in profile["billiard_reference_workflow"]:
         lines.append(f"{step['step']}. **{step['name']}**: {step['contract']}")
     lines.extend(["", "## Closed-Loop Demo Cases", ""])
     lines.append("| Case | Capability | Verified Contract |")
     lines.append("|---|---|---|")
-    lines.append("| Billiards causality | `billiard_causality_compiler` | Active striker moves first; passive targets move only after contact propagation |")
+    lines.append("| Contact causality, including billiards | `rigid_body_contact_causality` | Active bodies move first; passive bodies move only after contact propagation |")
     lines.append("| Falling blocks | `rigid_body_gravity_collision` | Gravity/collision are enabled, z decreases, and support contact is recorded |")
     lines.append("| Domino chain | `sequential_contact_propagation` | First domino is actively triggered; downstream dominoes tip through ordered adjacent contacts |")
     lines.extend(["", "## Iteration Playbook", ""])

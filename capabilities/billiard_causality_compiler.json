@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_capability_v1",
   "id": "billiard_causality_compiler",
-  "description": "Compile billiards / pool / cue-ball prompts into active-striker and passive-target rigid-body cases with contact-driven target motion.",
+  "description": "Compatibility alias for the older billiards-specific contact causality workflow. New cases should use `rigid_body_contact_causality`; billiards is now treated as one case family of the generic rigid-body contact capability.",
   "physical_assumptions": [
     "Only active striker bodies may have initial velocity or impulse.",
     "Passive targets start with zero linear and angular velocity.",

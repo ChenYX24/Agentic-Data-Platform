@@ -9,6 +9,7 @@ from harness.verification.billiards_verifier import verify_billiards
 from harness.verification.diagnosis import repair_suggestion
 from harness.verification.domino_verifier import verify_domino
 from harness.verification.falling_verifier import verify_falling
+from harness.verification.projectile_verifier import verify_projectile
 from harness.verification.ramp_verifier import verify_ramp
 
 
@@ -56,7 +57,7 @@ class PhysicsVerifier:
 
     def verify(self, case_spec: dict[str, Any], trajectory: list[dict[str, Any]], *, output_dir: str | Path | None = None) -> dict[str, Any]:
         capability_id = str(case_spec["capability_id"])
-        if capability_id == "billiard_causality_compiler":
+        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
             failure_type, first_failure, evidence = verify_billiards(case_spec, trajectory)
         elif capability_id == "sequential_contact_propagation":
             failure_type, first_failure, evidence = verify_domino(case_spec, trajectory)
@@ -64,6 +65,8 @@ class PhysicsVerifier:
             failure_type, first_failure, evidence = verify_falling(case_spec, trajectory)
         elif capability_id == "ramp_sliding_friction":
             failure_type, first_failure, evidence = verify_ramp(case_spec, trajectory)
+        elif capability_id == "projectile_gravity_motion":
+            failure_type, first_failure, evidence = verify_projectile(case_spec, trajectory)
         else:
             failure_type, first_failure, evidence = "F7_runtime_artifact_incomplete", {"object_id": capability_id, "frame": 0, "time": 0, "metric": "unsupported_capability", "value": capability_id}, []
         return verifier_report(

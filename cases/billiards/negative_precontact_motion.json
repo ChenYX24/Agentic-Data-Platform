@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_case_spec_v1",
   "case_id": "negative_precontact_motion",
-  "capability_id": "billiard_causality_compiler",
+  "capability_id": "rigid_body_contact_causality",
   "prompt": "Negative billiards case: passive target moves before cue ball contact.",
   "expected_physics": {
     "expected_failure": "F5_passive_precontact_motion",

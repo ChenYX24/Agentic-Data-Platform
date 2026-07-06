@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_case_template_v1",
   "template_id": "billiards_collision",
-  "capability_id": "billiard_causality_compiler",
+  "capability_id": "rigid_body_contact_causality",
   "description": "Parameterized rigid-body billiards-style collision. Passive balls must remain still until contact.",
   "fallback_supported": true,
   "parameter_ranges": {

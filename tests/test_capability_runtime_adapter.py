@@ -24,7 +24,7 @@ class CapabilityRuntimeAdapterTests(unittest.TestCase):
             result = verify_capability_run(run_dir)
             report = result["verifier_report"]
             execution = result["execution_trace"]
-            self.assertEqual(result["capability_plan"]["primary_capability_id"], "billiard_causality_compiler")
+            self.assertEqual(result["capability_plan"]["primary_capability_id"], "rigid_body_contact_causality")
             self.assertEqual(execution["render_evidence"]["source_type"], "UE")
             self.assertTrue(report["capability_ready"])
             self.assertTrue(report["reference_video_ready"])

@@ -1,0 +1,45 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "physics_property_constraint_validation",
+  "description": "Validate physical property ranges and parameter sensitivity for mass, friction, restitution, damping, gravity, material density, fracture threshold, buoyancy, and force-field controls.",
+  "physical_assumptions": [
+    "Physical parameters must be structured fields, not hidden prompt prose.",
+    "Each physics-critical object should declare the parameters needed by its capability.",
+    "Parameter sweeps should produce directionally predictable response changes.",
+    "Missing or non-schema physics fields must be surfaced before runtime."
+  ],
+  "required_signals": [
+    "case_spec",
+    "physical_parameters",
+    "material_labels",
+    "parameter_sample",
+    "expected_invariants"
+  ],
+  "required_assets": [
+    "physics material table",
+    "object property metadata"
+  ],
+  "verifier_rules": [
+    "Mass, radius, friction, restitution, gravity, and damping stay in capability-specific ranges.",
+    "Passive initial velocities are zero where causality requires it.",
+    "Friction/restitution/material changes produce expected monotonic response in generated sweeps.",
+    "Parameter labels are present in runtime artifacts."
+  ],
+  "failure_taxonomy": [
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Move physical values into `physical_parameters` and object fields.",
+    "Add material profile entries for friction/restitution/density.",
+    "Add generated sensitivity cases for the parameter under test."
+  ],
+  "smoke_cases": [
+    "cases/ramp/ramp_roll_low_friction.json",
+    "cases/projectile/upward_throw_arc.json"
+  ],
+  "regression_cases": [
+    "cases/ramp/negative_no_friction_sensitivity.json"
+  ]
+}

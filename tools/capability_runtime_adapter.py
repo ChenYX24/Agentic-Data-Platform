@@ -346,7 +346,7 @@ def normalize_environment(spec: dict[str, Any]) -> dict[str, Any]:
 
 def infer_role(object_id: str, raw: dict[str, Any], capability_id: str) -> str:
     source = f"{object_id} {raw.get('role') or ''} {raw.get('behavior') or ''}".casefold()
-    if capability_id == "billiard_causality_compiler":
+    if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
         if any(term in source for term in ("cue", "striker", "impactor", "active")):
             return "active_striker"
         if any(term in source for term in ("target", "rack", "ball")):

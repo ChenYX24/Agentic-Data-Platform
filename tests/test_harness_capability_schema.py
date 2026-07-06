@@ -10,8 +10,12 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         capabilities = CapabilityStore().list()
         self.assertGreaterEqual(len(capabilities), 6)
         ids = {item.id for item in capabilities}
+        self.assertIn("rigid_body_contact_causality", ids)
         self.assertIn("billiard_causality_compiler", ids)
         self.assertIn("asset_intent_resolution", ids)
+        self.assertIn("pipeline_stage_orchestration", ids)
+        self.assertIn("physics_property_constraint_validation", ids)
+        self.assertIn("asset_runtime_binding_invocation", ids)
 
 
 if __name__ == "__main__":

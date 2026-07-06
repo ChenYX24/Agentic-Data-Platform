@@ -11,6 +11,27 @@ This report is generated from project memory, docs, tests, and runtime code. It 
 
 ## Capability Summary
 
+## Capability Abstraction Update
+
+`billiard_causality_compiler` is no longer treated as a core capability. It is a
+compatibility alias for old runs and tests. New planners, case templates, and
+agent-facing docs should use:
+
+- `rigid_body_contact_causality`: generic active/passive contact transfer across
+  billiards, bowling/pins, crates, mass-ratio impacts, and other rigid-body
+  collision cases.
+- `static_scene_placement`: object-level static layout, support surfaces,
+  non-overlap, camera coverage, and physics graph membership before runtime.
+- `asset_runtime_binding_invocation`: top-k asset retrieval, selected asset or
+  proxy fallback, and runtime actor binding with collider/material metadata.
+- `physics_property_constraint_validation`: structured mass/friction/restitution/
+  damping/gravity/material/force constraints and parameter-sensitivity checks.
+- `pipeline_stage_orchestration`: explicit stage inputs/outputs from planning to
+  artifact package, with no silent fallback.
+
+This keeps the harness useful beyond billiards: the same contact-causality
+contract can verify pool, bowling, crate impacts, and other contact-driven scenes.
+
 ### Prompt To Object-Level Scene Compiler
 
 - id: `object_graph_scene_compiler`
@@ -30,14 +51,14 @@ Evidence:
 - `README.md:207`: | 4. Scene Spec | Object graph, assets | `scene_spec.json`, runtime request | `tools/draft_builder.py`, `contracts/`, `configs/` | Change object layout, camera defaults, scene schema, or artifact contracts |
 - `docs/PHYSICS_AWARE_HARNESS.md:153`: | `F1_scene_parsing_failure` | prompt or scene intent cannot form a valid object-level plan |
 
-### Billiard-Style Causal Collision Compiler
+### Generic Rigid-Body Contact Causality
 
-- id: `billiard_causality_compiler`
+- id: `rigid_body_contact_causality`
 - pattern: `FLOW`
-- stages: `planner, physics_control, runtime, verifier`
+- stages: `capability_planning, case_spec_compilation, scene_spec_compilation, runtime_artifact_collection, physics_verification`
 - confidence: `0.95` from `267` matched lines
 
-Turn prompts such as a cue ball hitting a rack into a causal rigid-body program: only the driver has initial motion; target bodies move after contact evidence exists.
+Compile active-to-passive rigid-body contact scenes into causal simulation programs where passive bodies move only after runtime contact evidence exists. Billiards is a smoke family, not a standalone core capability.
 
 Key iteration moves:
 - Inspect physics.json for passive initial velocities.
@@ -45,7 +66,7 @@ Key iteration moves:
 - Adjust radius/extent and initial spacing before increasing speed.
 
 Evidence:
-- `README.md:248`: | `billiard_causality_compiler` | Active striker moves first; passive targets move only after contact events |
+- `capabilities/rigid_body_contact_causality.json`: generic active/passive contact contract with trajectory and contact-event requirements.
 - `tools/capability_closed_loop.py:18`: "prompt": "Create a billiards / pool scene where one cue ball hits a compact rack of passive target balls. Targets must stay still until contact.",
 - `tools/capability_planner.py:27`: terms=("billiard", "billiards", "pool", "cue ball", "cue_ball", "台球", "白球", "目标球", "ball collision"),
 
@@ -258,7 +279,7 @@ Evidence:
 - `README.md:223`: The repo includes a small extractor that turns project evidence into a reusable harness capability profile. This is how the billiard-style collision work is preserved without hardcoding a billiard template: the extracte…
 - `README.md:314`: This is the bridge from generated video runs back into the physics-aware harness. If the video exists but passive objects move before runtime contact, the run fails with `F4_causality_violation`; the MP4 alone is not co…
 
-## Billiard Reference Workflow
+## Rigid-Body Contact Reference Workflow
 
 1. **Compile object graph**: Create one active cue/driver body and a passive target rack with stable ids.
 2. **Bind physical assets**: Use sphere or sphere-like colliders with explicit radius/diameter semantics and no t=0 overlap.
@@ -271,7 +292,7 @@ Evidence:
 
 | Case | Capability | Verified Contract |
 |---|---|---|
-| Billiards causality | `billiard_causality_compiler` | Active striker moves first; passive targets move only after contact propagation |
+| Contact causality, including billiards | `rigid_body_contact_causality` | Active bodies move first; passive bodies move only after contact propagation |
 | Falling blocks | `rigid_body_gravity_collision` | Gravity/collision are enabled, z decreases, and support contact is recorded |
 | Domino chain | `sequential_contact_propagation` | First domino is actively triggered; downstream dominoes tip through ordered adjacent contacts |
 

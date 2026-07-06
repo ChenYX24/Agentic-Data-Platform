@@ -1,7 +1,7 @@
 {
   "schema_version": "harness_case_spec_v1",
   "case_id": "multi_ball_chain_contact",
-  "capability_id": "billiard_causality_compiler",
+  "capability_id": "rigid_body_contact_causality",
   "prompt": "A cue ball hits a passive target ball which then contacts a second passive target ball.",
   "expected_physics": {
     "speed": "medium",

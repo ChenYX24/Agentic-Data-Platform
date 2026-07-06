@@ -22,8 +22,8 @@ class CapabilityRule:
 
 CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
     CapabilityRule(
-        capability_id="billiard_causality_compiler",
-        case_family="billiards_causality",
+        capability_id="rigid_body_contact_causality",
+        case_family="rigid_body_contact",
         terms=("billiard", "billiards", "pool", "cue ball", "cue_ball", "台球", "白球", "目标球", "ball collision"),
         priority=100,
     ),
@@ -44,6 +44,12 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
         case_family="ramp_sliding",
         terms=("ramp", "inclined plane", "slope", "sliding down", "rolling down", "斜面", "坡道", "下滑", "滚下", "摩擦斜坡"),
         priority=85,
+    ),
+    CapabilityRule(
+        capability_id="projectile_gravity_motion",
+        case_family="projectile_motion",
+        terms=("projectile", "throw", "thrown", "upward throw", "launch angle", "parabolic", "抛体", "上抛", "抛出", "投掷", "发射角度"),
+        priority=84,
     ),
 )
 
@@ -80,7 +86,7 @@ class CapabilityPlanner:
                 "fallback_runtime": "SIM_PROXY",
                 "dry_run_supported": True,
                 "requires_trajectory": True,
-                "requires_contact_events": primary["capability_id"] in {"billiard_causality_compiler", "sequential_contact_propagation"},
+                "requires_contact_events": primary["capability_id"] in {"rigid_body_contact_causality", "billiard_causality_compiler", "sequential_contact_propagation"},
             },
         }
 

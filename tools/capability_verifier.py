@@ -55,7 +55,7 @@ class CapabilityVerifier:
         capability_id = str(capability_plan.get("primary_capability_id") or "")
         objects = execution_objects(execution)
         failures: list[dict[str, Any]] = []
-        if capability_id == "billiard_causality_compiler":
+        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
             active = [obj for obj in objects.values() if obj.get("role") == "active_striker"]
             passive = [obj for obj in objects.values() if obj.get("role") == "passive_target"]
             if not active or not passive:
@@ -95,7 +95,7 @@ class CapabilityVerifier:
 
     def _runtime_causality_validity(self, capability_plan: dict[str, Any], execution: dict[str, Any]) -> dict[str, Any]:
         capability_id = str(capability_plan.get("primary_capability_id") or "")
-        if capability_id == "billiard_causality_compiler":
+        if capability_id in {"rigid_body_contact_causality", "billiard_causality_compiler"}:
             return self._verify_billiard_causality(execution)
         if capability_id == "rigid_body_gravity_collision":
             return self._verify_falling_blocks(execution)

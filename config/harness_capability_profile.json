@@ -133,7 +133,7 @@
     },
     {
       "confidence": 0.95,
-      "description": "Turn prompts such as a cue ball hitting a rack into a causal rigid-body program: only the driver has initial motion; target bodies move after contact evidence exists.",
+      "description": "Compatibility alias for billiards-specific cases. Prefer rigid_body_contact_causality for new planners and case templates.",
       "evidence": [
         {
           "matched_terms": [
@@ -244,7 +244,7 @@
         "runtime",
         "verifier"
       ],
-      "title": "Billiard-Style Causal Collision Compiler",
+      "title": "Billiards Contact Causality Case Family (Compatibility Alias)",
       "verifier_checks": [
         "First active contact exists between driver and target group.",
         "Passive pre-contact speed stays below threshold.",
@@ -1498,9 +1498,131 @@
         "Each capability has evidence, failure modes, and iteration moves.",
         "Docs point users to executable owner files and tests."
       ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "General active-to-passive rigid-body contact causality capability. Billiards is one case family, not the core abstraction.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "contact events",
+            "passive"
+          ],
+          "source": "README.md:248",
+          "text": "| `billiard_causality_compiler` | Active striker moves first; passive targets move only after contact events |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive",
+            "target balls"
+          ],
+          "source": "tools/capability_closed_loop.py:18",
+          "text": "\"prompt\": \"Create a billiards / pool scene where one cue ball hits a compact rack of passive target balls. Targets must stay still until contact.\","
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "cue_ball",
+            "台球"
+          ],
+          "source": "tools/capability_planner.py:27",
+          "text": "terms=(\"billiard\", \"billiards\", \"pool\", \"cue ball\", \"cue_ball\", \"台球\", \"白球\", \"目标球\", \"ball collision\"),"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive",
+            "target balls"
+          ],
+          "source": "tools/draft_builder.py:81",
+          "text": "\"For billiard-like scenes, active cue/impactor bodies should get non-zero initial_velocity_m_s, passive target balls must start with [0,0,0], \""
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "passive"
+          ],
+          "source": "README.md:285",
+          "text": "| billiards causality | `billiard_causality_compiler` | active striker moves first; passive targets move only after runtime contact propagation |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive"
+          ],
+          "source": "capabilities/billiard_causality_compiler.json:4",
+          "text": "\"description\": \"Compile billiards / pool / cue-ball prompts into active-striker and passive-target rigid-body cases with contact-driven target motion.\","
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "cue"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:135",
+          "text": "| billiards / pool / cue ball / ball collision | `billiard_causality_compiler` |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive"
+          ],
+          "source": "tests/test_capability_closed_loop.py:40",
+          "text": "plan = self.planner.plan(\"billiards cue ball hits passive target\")"
+        }
+      ],
+      "evidence_count": 267,
+      "failure_modes": [
+        "F1_missing_trajectory",
+        "F2_missing_contact_events",
+        "F3_initial_overlap",
+        "F4_causality_violation",
+        "F5_passive_precontact_motion",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "id": "rigid_body_contact_causality",
+      "iteration_moves": [
+        "Inspect physics.json for passive initial velocities.",
+        "Inspect first trajectory frames for target speed before first active contact.",
+        "Adjust radius/extent and initial spacing before increasing speed.",
+        "Only then sweep driver speed, restitution, and friction to tune spread."
+      ],
+      "pattern_type": "pipeline_capability",
+      "prompt_moves": [
+        "Identify active bodies, passive bodies, collision graph, initial velocities, and expected contact propagation."
+      ],
+      "runtime_contract": [
+        "Active bodies may receive initial velocity or impulse.",
+        "Passive bodies start with zero unexplained motion.",
+        "Passive motion must follow runtime contact events.",
+        "Contact graph edges must be present in artifacts."
+      ],
+      "stage_ids": [
+        "capability_planning",
+        "case_spec_compilation",
+        "scene_spec_compilation",
+        "runtime_artifact_collection",
+        "physics_verification"
+      ],
+      "title": "Generic Rigid-Body Contact Causality",
+      "verifier_checks": [
+        "Passive initial velocity is near zero.",
+        "No passive pre-contact displacement above threshold.",
+        "Expected contact graph is present.",
+        "Motion after render is explained by contact."
+      ]
     }
   ],
-  "capability_count": 13,
+  "capability_count": 14,
   "iteration_playbook": [
     {
       "input": "README/docs, tests, runtime code, and public config",

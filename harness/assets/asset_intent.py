@@ -22,6 +22,9 @@ PHYSICS_CRITICAL_ROLES = {
     "inclined_plane",
     "constrained_body",
     "constraint_anchor",
+    "projectile",
+    "thrown_body",
+    "launched_body",
 }
 
 

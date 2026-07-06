@@ -1,0 +1,44 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "asset_runtime_binding_invocation",
+  "description": "Resolve asset intents, select real UE assets or analytic proxies, and bind them into runtime scene actors with physics-critical metadata.",
+  "physical_assumptions": [
+    "Asset retrieval is separate from physics verification but must preserve physics-critical properties.",
+    "Visual-only assets can be randomized or proxied without changing the physics graph.",
+    "Physics-critical asset fallback must be explicit and recorded.",
+    "Runtime actor creation must use the selected asset, collider, material, transform, and collision profile."
+  ],
+  "required_signals": [
+    "asset_intents",
+    "top_k_candidates",
+    "selected_asset",
+    "fallback_reason",
+    "runtime_actor_bindings"
+  ],
+  "required_assets": [
+    "asset registry",
+    "material registry",
+    "UE package paths or analytic proxy definitions"
+  ],
+  "verifier_rules": [
+    "Every physics-critical object has a selected asset or explicit proxy fallback.",
+    "Selected asset includes collider and material metadata.",
+    "Runtime actor bindings reference known object ids.",
+    "Visual-only assets are excluded from the physics graph."
+  ],
+  "failure_taxonomy": [
+    "F2_asset_missing",
+    "F3_invalid_initial_physics_state",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Update `SIM_STUDIO_ASSET_REGISTRY` or import an ADP asset index.",
+    "Add missing collider/mass/material/collision profile fields.",
+    "Use analytic proxy only when real asset metadata is unavailable."
+  ],
+  "smoke_cases": [
+    "cases/billiards/six_ball_triangle_low_speed.json",
+    "cases/projectile/upward_throw_arc.json"
+  ],
+  "regression_cases": []
+}
