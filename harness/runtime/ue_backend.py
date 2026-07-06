@@ -9,8 +9,13 @@ from typing import Any
 from harness.core.case_spec import CaseSpec
 from harness.core.artifact_schema import write_json
 from harness.core.artifact_manager import ArtifactManager
+from harness.assets.asset_resolver import resolve_asset_intents
+from harness.planning.static_scene_builder import build_static_scene_layout
+from harness.runtime.actor_placement import compile_runtime_actor_placement
 from harness.runtime.camera_planner import camera_plan_from_case_spec
 from harness.runtime.render_pass_contract import enforce_ue_render_passes, verify_render_observability, write_render_contract_artifacts
+from harness.verification.runtime_actor_placement_verifier import verify_runtime_actor_placement
+from harness.verification.static_scene_verifier import verify_static_scene_layout
 from harness.verification.render_sync_checker import ARTIFACT_SCHEMA_VERSION, check_render_sync
 
 
@@ -48,6 +53,26 @@ class UEBackend:
         ue_render_passes = enforce_ue_render_passes(render_passes)
         camera_plan = camera_plan_from_case_spec(case.data, requested_views=ue_requested_views, camera_strategy=camera_strategy)
         write_json(run_dir / "camera_plan.json", camera_plan_to_json(camera_plan))
+        actor_contract = prepare_runtime_actor_contract(
+            case,
+            run_dir,
+            requested_views=ue_requested_views,
+            camera_strategy=camera_strategy,
+        )
+        if actor_contract["status"] != "pass":
+            report = build_backend_report(
+                case,
+                run_id,
+                empty_preflight(case.case_id),
+                phase="actor_placement",
+                real_ue_invoked=False,
+                failure_code=str(actor_contract["failure_type"]),
+                failure_message=str(actor_contract["failure_message"]),
+                failure_category="preflight_failure",
+            )
+            write_json(run_dir / "ue_preflight_report.json", empty_preflight(case.case_id))
+            write_failed_ue_artifacts(run_dir, output_dir, case, run_id, report, camera_plan=camera_plan, render_passes=ue_render_passes, requested_view_count=len(ue_requested_views))
+            raise UEBackendUnavailable(report["failure_message"], run_dir, str(report["failure_code"]), report)
         preflight = build_ue_preflight_report(case.case_id)
         write_json(run_dir / "ue_preflight_report.json", preflight)
         if preflight["failure_code"]:
@@ -211,6 +236,11 @@ def write_failed_ue_artifacts(
             "paths": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "asset_resolution": "asset_resolution.json",
+                "scene_layout": "scene_layout.json",
+                "static_scene_report": "static_scene_report.json",
+                "runtime_actor_placement": "runtime_actor_placement.json",
+                "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
                 "camera_trajectory": "camera_trajectory.json",
@@ -261,6 +291,11 @@ def write_failed_ue_artifacts(
             "artifacts": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "asset_resolution": "asset_resolution.json",
+                "scene_layout": "scene_layout.json",
+                "static_scene_report": "static_scene_report.json",
+                "runtime_actor_placement": "runtime_actor_placement.json",
+                "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "harness_artifact": "harness_artifact.json",
                 "harness_verifier": "harness_verifier.json",
                 "trajectory": "trajectory.json",
@@ -276,6 +311,65 @@ def write_failed_ue_artifacts(
         },
     )
     write_json(run_dir / "ue_backend_report.json", report)
+
+
+def empty_preflight(case_id: str) -> dict[str, Any]:
+    return {
+        "schema_version": "harness_ue_preflight_report_v1",
+        "backend_mode": "ue",
+        "requested_case_id": case_id,
+        "env_presence": {},
+        "resolved_paths": {},
+        "path_exists": {},
+        "path_properties": {},
+        "raw_env": {},
+        "failure_code": None,
+        "failure_message": None,
+        "next_required_action": "Fix runtime actor placement before UE preflight.",
+        "whether_real_ue_invoked": False,
+    }
+
+
+def prepare_runtime_actor_contract(
+    case: CaseSpec,
+    run_dir: Path,
+    *,
+    requested_views: list[str],
+    camera_strategy: str,
+) -> dict[str, Any]:
+    asset_resolution = resolve_asset_intents(case.data)
+    scene_layout = build_static_scene_layout(
+        case.data,
+        asset_resolution=asset_resolution,
+        requested_views=requested_views,
+        camera_strategy=camera_strategy,
+    )
+    static_report = verify_static_scene_layout(case.data, scene_layout)
+    runtime_actor_placement = compile_runtime_actor_placement(
+        case.data,
+        scene_layout,
+        asset_resolution=asset_resolution,
+        target_backend="UE",
+    )
+    runtime_actor_placement_report = verify_runtime_actor_placement(case.data, runtime_actor_placement)
+    write_json(run_dir / "asset_resolution.json", asset_resolution)
+    write_json(run_dir / "scene_layout.json", scene_layout)
+    write_json(run_dir / "static_scene_report.json", static_report)
+    write_json(run_dir / "runtime_actor_placement.json", runtime_actor_placement)
+    write_json(run_dir / "runtime_actor_placement_report.json", runtime_actor_placement_report)
+    if static_report.get("status") != "pass":
+        return {
+            "status": "fail",
+            "failure_type": static_report.get("failure_type") or "F3_invalid_initial_physics_state",
+            "failure_message": f"Static scene placement failed: {static_report.get('failure_type')}",
+        }
+    if runtime_actor_placement_report.get("status") != "pass":
+        return {
+            "status": "fail",
+            "failure_type": runtime_actor_placement_report.get("failure_type") or "F7_runtime_artifact_incomplete",
+            "failure_message": f"Runtime actor placement failed: {runtime_actor_placement_report.get('failure_type')}",
+        }
+    return {"status": "pass", "failure_type": None, "failure_message": None}
 
 
 def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
@@ -483,6 +577,7 @@ def build_runner_command(run_dir: Path, preflight: dict[str, Any], *, requested_
         "asset_registry": str(preflight["resolved_paths"]["SIM_STUDIO_ASSET_REGISTRY"]),
         "ue_project": str(preflight["resolved_paths"]["SIM_STUDIO_UE_PROJECT"]),
         "ue_executable": str(preflight["resolved_paths"]["SIM_STUDIO_UE_EXECUTABLE"]),
+        "actor_placement": str(run_dir / "runtime_actor_placement.json"),
     }
     command = [part.format(**values) for part in shlex.split(raw)]
     append_option(command, "--case-spec", values["case_spec"])
@@ -496,6 +591,7 @@ def build_runner_command(run_dir: Path, preflight: dict[str, Any], *, requested_
     append_option(command, "--map", values["map"])
     append_option(command, "--actor-class", values["actor_class"])
     append_option(command, "--asset-registry", values["asset_registry"])
+    append_option(command, "--actor-placement", values["actor_placement"])
     return command
 
 
@@ -629,6 +725,11 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
             "paths": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "asset_resolution": "asset_resolution.json",
+                "scene_layout": "scene_layout.json",
+                "static_scene_report": "static_scene_report.json",
+                "runtime_actor_placement": "runtime_actor_placement.json",
+                "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
                 "camera_trajectory": "camera_trajectory.json",
@@ -656,6 +757,11 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
             "artifacts": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "asset_resolution": "asset_resolution.json",
+                "scene_layout": "scene_layout.json",
+                "static_scene_report": "static_scene_report.json",
+                "runtime_actor_placement": "runtime_actor_placement.json",
+                "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
                 "camera_trajectory": "camera_trajectory.json",

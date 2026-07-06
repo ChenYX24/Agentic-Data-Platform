@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--output-dir")
     parser.add_argument("--camera-plan", required=True)
+    parser.add_argument("--actor-placement", default="")
     parser.add_argument("--render-pass-manifest-out")
     parser.add_argument("--views", default="front_static,side_static,top_down,tracking_subject,event_closeup")
     parser.add_argument("--passes", default="rgb,depth,segmentation")
@@ -47,8 +48,12 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     case_spec = read_json(Path(args.case_spec))
     camera_plan = read_json(Path(args.camera_plan))
-    studio_scene_spec = build_studio_scene_spec(case_spec, args)
-    runtime_scene = build_runtime_scene(case_spec, camera_plan, args, pass_mode="data" if args.mode == "both" else args.mode)
+    actor_placement = read_optional_json(Path(args.actor_placement)) if args.actor_placement else {}
+    if args.actor_placement and not actor_placement.get("actor_bindings"):
+        write_json(run_dir / "local_ue_runner_report.json", fail_report("F_RUNTIME_ACTOR_PLACEMENT_MISSING", f"Actor placement is missing or invalid: {args.actor_placement}"))
+        return 2
+    studio_scene_spec = build_studio_scene_spec(case_spec, args, actor_placement=actor_placement)
+    runtime_scene = build_runtime_scene(case_spec, camera_plan, args, pass_mode="data" if args.mode == "both" else args.mode, actor_placement=actor_placement)
     studio_scene_path = run_dir / "studio_scene_spec.json"
     runtime_scene_path = run_dir / "studio_runtime_scene.json"
     write_json(studio_scene_path, studio_scene_spec)
@@ -91,7 +96,7 @@ def main() -> int:
     data_native_output: Path | None = None
     for pass_mode in pass_sequence(args.mode):
         native_output = native_output_dir(run_dir, pass_mode, args.mode)
-        pass_runtime_scene = build_runtime_scene(case_spec, camera_plan, args, pass_mode=pass_mode)
+        pass_runtime_scene = build_runtime_scene(case_spec, camera_plan, args, pass_mode=pass_mode, actor_placement=actor_placement)
         pass_runtime_scene_path = run_dir / "logs" / f"studio_runtime_scene_{pass_mode}.json"
         write_json(pass_runtime_scene_path, pass_runtime_scene)
         proc_result = run_native_pass(
@@ -151,7 +156,7 @@ def main() -> int:
     return 0 if report["status"] == "completed" else 2
 
 
-def build_studio_scene_spec(case_spec: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+def build_studio_scene_spec(case_spec: dict[str, Any], args: argparse.Namespace, *, actor_placement: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "draft_id": str(case_spec.get("case_id") or "harness_case"),
         "prompt": case_spec.get("prompt", ""),
@@ -165,6 +170,7 @@ def build_studio_scene_spec(case_spec: dict[str, Any], args: argparse.Namespace)
         },
         "physics_controls": default_physics_controls(case_spec),
         "semantic_plan": {"case_type": native_case_type(case_spec), "source": "harness_case_spec"},
+        "runtime_actor_placement": summarize_actor_placement(actor_placement),
         "camera_plan": {},
         "map_lighting_controls": default_lighting_controls("data"),
         "assets": [],
@@ -172,8 +178,8 @@ def build_studio_scene_spec(case_spec: dict[str, Any], args: argparse.Namespace)
     }
 
 
-def build_runtime_scene(case_spec: dict[str, Any], camera_plan: dict[str, Any], args: argparse.Namespace, *, pass_mode: str) -> dict[str, Any]:
-    dynamic_objects, static_objects = runtime_objects_for_case(case_spec)
+def build_runtime_scene(case_spec: dict[str, Any], camera_plan: dict[str, Any], args: argparse.Namespace, *, pass_mode: str, actor_placement: dict[str, Any] | None = None) -> dict[str, Any]:
+    dynamic_objects, static_objects = runtime_objects_for_case(case_spec, actor_placement=actor_placement)
     return {
         "schema_version": "studio_runtime_v1",
         "draft_id": str(case_spec.get("case_id") or "harness_case"),
@@ -205,7 +211,9 @@ def build_runtime_scene(case_spec: dict[str, Any], camera_plan: dict[str, Any], 
     }
 
 
-def runtime_objects_for_case(case_spec: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def runtime_objects_for_case(case_spec: dict[str, Any], actor_placement: dict[str, Any] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if actor_placement and actor_placement.get("actor_bindings"):
+        return runtime_objects_from_actor_placement(actor_placement, case_spec)
     capability = canonical_capability_id(str(case_spec.get("capability_id") or ""))
     if capability == "rigid_body_contact_causality":
         return billiards_objects(case_spec)
@@ -214,6 +222,91 @@ def runtime_objects_for_case(case_spec: dict[str, Any]) -> tuple[list[dict[str, 
     if capability == "rigid_body_gravity_collision":
         return falling_objects(case_spec)
     return generic_objects(case_spec)
+
+
+def runtime_objects_from_actor_placement(actor_placement: dict[str, Any], case_spec: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    by_case_object = {
+        str(obj.get("id") or obj.get("object_id")): obj
+        for obj in case_spec.get("objects", [])
+        if isinstance(obj, dict) and (obj.get("id") or obj.get("object_id"))
+    }
+    dynamic: list[dict[str, Any]] = []
+    static: list[dict[str, Any]] = []
+    for index, binding in enumerate(actor_placement.get("actor_bindings") or []):
+        if not isinstance(binding, dict):
+            continue
+        object_id = str(binding.get("object_id") or f"actor_{index:02d}")
+        case_object = by_case_object.get(object_id, {})
+        physics = binding.get("physics") if isinstance(binding.get("physics"), dict) else {}
+        transform = binding.get("transform") if isinstance(binding.get("transform"), dict) else {}
+        bounds = binding.get("bounds") if isinstance(binding.get("bounds"), dict) else {}
+        params = {
+            "runtime_actor_id": binding.get("runtime_actor_id"),
+            "binding_source": ((binding.get("asset") or {}).get("binding_source") if isinstance(binding.get("asset"), dict) else None),
+            "role": binding.get("role"),
+            "material": physics.get("material"),
+            "collision_profile": physics.get("collision_profile"),
+            "collider": physics.get("collider"),
+        }
+        runtime_physics = {
+            "mass_kg": physics.get("mass_kg"),
+            "initial_velocity_m_s": list(case_object.get("initial_velocity_m_s") or case_object.get("initial_velocity") or [0.0, 0.0, 0.0]),
+            "collision_profile": physics.get("collision_profile"),
+            "collider": physics.get("collider"),
+            "material": physics.get("material"),
+            "simulate_physics": bool(physics.get("simulate_physics")),
+            "kinematic": bool(physics.get("kinematic")),
+        }
+        actor = runtime_object(
+            object_id,
+            ue_path_for_binding(binding),
+            "llm_rigid_body" if physics.get("simulate_physics") else "llm_static_body",
+            list(transform.get("position_m") or case_object.get("initial_position_m") or case_object.get("position_m") or [0.0, 0.0, 0.0]),
+            scale_for_binding(binding),
+            runtime_physics,
+            params,
+        )
+        if physics.get("simulate_physics"):
+            dynamic.append(actor)
+        else:
+            static.append(actor)
+    return dynamic, static
+
+
+def ue_path_for_binding(binding: dict[str, Any]) -> str:
+    asset = binding.get("asset") if isinstance(binding.get("asset"), dict) else {}
+    if asset.get("ue_path"):
+        return str(asset["ue_path"])
+    physics = binding.get("physics") if isinstance(binding.get("physics"), dict) else {}
+    collider = str(physics.get("collider") or "").casefold()
+    role = str(binding.get("role") or "").casefold()
+    if "sphere" in collider or "ball" in role:
+        return "/Engine/BasicShapes/Sphere.Sphere"
+    if "capsule" in collider or "cylinder" in collider or "pin" in role or "domino" in role:
+        return "/Engine/BasicShapes/Cylinder.Cylinder" if "pin" in role else "/Engine/BasicShapes/Cube.Cube"
+    return "/Engine/BasicShapes/Cube.Cube"
+
+
+def scale_for_binding(binding: dict[str, Any]) -> list[float]:
+    bounds = binding.get("bounds") if isinstance(binding.get("bounds"), dict) else {}
+    extents = bounds.get("extents_m")
+    if isinstance(extents, list) and len(extents) >= 3:
+        return [float(extents[0]), float(extents[1]), float(extents[2])]
+    return [0.25, 0.25, 0.25]
+
+
+def summarize_actor_placement(actor_placement: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(actor_placement, dict) or not actor_placement.get("actor_bindings"):
+        return {"available": False, "actor_count": 0}
+    summary = actor_placement.get("placement_summary") if isinstance(actor_placement.get("placement_summary"), dict) else {}
+    return {
+        "available": True,
+        "schema_version": actor_placement.get("schema_version"),
+        "actor_count": summary.get("actor_count", len(actor_placement.get("actor_bindings") or [])),
+        "physics_critical_count": summary.get("physics_critical_count"),
+        "simulated_actor_count": summary.get("simulated_actor_count"),
+        "camera_count": summary.get("camera_count"),
+    }
 
 
 def billiards_objects(case_spec: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

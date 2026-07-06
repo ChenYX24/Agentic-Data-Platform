@@ -65,9 +65,24 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--case-spec")
 parser.add_argument("--run-dir", required=True)
 parser.add_argument("--camera-plan")
+parser.add_argument("--actor-placement")
 args, _ = parser.parse_known_args()
 run_dir = Path(args.run_dir)
 run_dir.mkdir(parents=True, exist_ok=True)
+actor_placement_path = Path(args.actor_placement or "")
+if not actor_placement_path.exists():
+    (run_dir / "local_ue_runner_report.json").write_text(json.dumps({
+        "schema_version": "harness_local_ue_runner_report.v1",
+        "status": "failed",
+        "failure_code": "F_RUNTIME_ACTOR_PLACEMENT_MISSING",
+        "failure_message": "actor placement path was not passed or does not exist"
+    }), encoding="utf-8")
+    raise SystemExit(2)
+actor_placement = json.loads(actor_placement_path.read_text(encoding="utf-8"))
+(run_dir / "runner_received_args.json").write_text(json.dumps({
+    "actor_placement": str(actor_placement_path),
+    "actor_count": len(actor_placement.get("actor_bindings", []))
+}), encoding="utf-8")
 trajectory = [
     {"frame": 0, "time_s": 0.0, "objects": {"floor": {"position_m": [0, 0, 0], "velocity_m_s": [0, 0, 0]}, "falling_block": {"position_m": [0, 0, 1.2], "velocity_m_s": [0, 0, 0]}}, "contacts": []},
     {"frame": 1, "time_s": 0.2, "objects": {"floor": {"position_m": [0, 0, 0], "velocity_m_s": [0, 0, 0]}, "falling_block": {"position_m": [0, 0, 0.6], "velocity_m_s": [0, 0, -2.0]}}, "contacts": []},
@@ -452,6 +467,8 @@ class HarnessCliTests(unittest.TestCase):
                 "render_sync_report.json",
                 "verifier_report.json",
                 "ue_backend_report.json",
+                "runtime_actor_placement.json",
+                "runtime_actor_placement_report.json",
                 "video.mp4",
                 "inputs/case.json",
                 "inputs/scene.json",
@@ -468,9 +485,12 @@ class HarnessCliTests(unittest.TestCase):
                 self.assertTrue((run_dir / name).exists(), name)
                 self.assertGreater((run_dir / name).stat().st_size, 0, name)
             backend_report = json.loads((run_dir / "ue_backend_report.json").read_text(encoding="utf-8"))
+            received = json.loads((run_dir / "runner_received_args.json").read_text(encoding="utf-8"))
             readiness = json.loads((run_dir / "run_readiness.json").read_text(encoding="utf-8"))
             self.assertEqual(backend_report["status"], "completed")
             self.assertTrue(backend_report["whether_real_ue_invoked"])
+            self.assertIn("--actor-placement", backend_report["runner_command"])
+            self.assertGreater(received["actor_count"], 0)
             self.assertTrue(readiness["visual_ready"])
             self.assertTrue(readiness["physics_ready"])
             self.assertTrue(readiness["ue_render_real"])
