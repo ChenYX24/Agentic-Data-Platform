@@ -47,6 +47,8 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
         return ramp_trajectory(case_id, case_spec)
     if capability_id == "projectile_gravity_motion":
         return projectile_trajectory(case_id, case_spec)
+    if capability_id == "bounce_restitution_ball":
+        return bounce_trajectory(case_id, case_spec)
     return []
 
 
@@ -213,6 +215,42 @@ def projectile_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[
         contacts = [] if negative_mode == "missing_landing_contact" or frame_id < len(sample_times) - 1 else [contact(projectile_id, ground_id, frame_id, time_s)]
         frames.append(frame(frame_id, time_s, {ground_id: ground_state, projectile_id: state(position, [round(v0[0], 4), 0.0, round(vz, 4)])}, contacts=contacts))
     return frames
+
+
+def bounce_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    negative_mode = str(case_spec.get("negative_mode") or "")
+    if not negative_mode and "no_rebound" in case_id:
+        negative_mode = "no_rebound"
+    if not negative_mode and "energy_gain" in case_id:
+        negative_mode = "energy_gain"
+    object_specs = {str(obj.get("id")): obj for obj in case_spec.get("objects", []) if isinstance(obj, dict)}
+    body_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"bouncing_body", "restitution_subject", "bounce_subject"}), "bounce_ball")
+    support_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"support", "ground", "floor"}), "floor")
+    body_spec = object_specs.get(body_id) or {"initial_position_m": [0.0, 0.0, 1.2], "radius_m": 0.12}
+    support_state = state(vec3((object_specs.get(support_id) or {}).get("initial_position_m") or [0.0, 0.0, 0.0]), [0, 0, 0])
+    p0 = vec3(body_spec.get("initial_position_m") or [0.0, 0.0, 1.2])
+    radius = float(body_spec.get("radius_m") or 0.1)
+    expected = dict(case_spec.get("expected_physics") or {})
+    drop_height = float(expected.get("drop_height_m") or max(0.2, p0[2] - radius))
+    restitution = float(expected.get("restitution") or body_spec.get("restitution") or 0.5)
+    rebound_ratio = restitution * restitution
+    if negative_mode == "no_rebound":
+        rebound_ratio = 0.01
+    elif negative_mode == "energy_gain":
+        rebound_ratio = max(1.05, float(expected.get("expected_max_rebound_ratio") or 0.5) + 0.25)
+    contact_z = radius
+    rebound_z = contact_z + drop_height * rebound_ratio
+    initial = {support_id: support_state, body_id: state(p0, [0, 0, 0])}
+    falling = {support_id: support_state, body_id: state([p0[0], p0[1], round(contact_z + drop_height * 0.35, 4)], [0, 0, -3.0])}
+    contact_state = {support_id: support_state, body_id: state([p0[0], p0[1], round(contact_z, 4)], [0, 0, round(3.0 * restitution, 4)])}
+    rebound = {support_id: support_state, body_id: state([p0[0], p0[1], round(rebound_z, 4)], [0, 0, 0])}
+    contacts = [] if negative_mode == "missing_contact" else [contact(body_id, support_id, 2, 0.4)]
+    return [
+        frame(0, 0.0, initial),
+        frame(1, 0.2, falling),
+        frame(2, 0.4, contact_state, contacts=contacts),
+        frame(3, 0.6, rebound),
+    ]
 
 
 def state(position: list[float], velocity: list[float], *, rotation: list[float] | None = None) -> dict[str, Any]:

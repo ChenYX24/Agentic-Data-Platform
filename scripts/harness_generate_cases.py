@@ -23,7 +23,7 @@ TEMPLATE_SCHEMA_VERSION = "harness_case_template_v1"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate parameterized harness case specs from a template.")
     parser.add_argument("--template", help="Path to cases/templates/*.template.json")
-    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "basic_physics"], help="Named case suite shortcut.")
+    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "bounce", "basic_physics"], help="Named case suite shortcut.")
     parser.add_argument("--num-cases", type=int, help="Number of case specs to generate.")
     parser.add_argument("--count", type=int, help="Alias for --num-cases.")
     parser.add_argument("--seed", type=int, default=0, help="Deterministic generation seed.")
@@ -92,6 +92,7 @@ def template_for_suite(suite: str | None) -> str | None:
         "falling": "cases/templates/falling_blocks.template.json",
         "ramp": "cases/templates/ramp_sliding.template.json",
         "projectile": "cases/templates/projectile_motion.template.json",
+        "bounce": "cases/templates/bounce_restitution.template.json",
         "basic_physics": "cases/templates/falling_blocks.template.json",
     }[suite]
 
@@ -125,6 +126,8 @@ def generate_case(template: dict[str, Any], rng: random.Random, *, index: int, s
         return ramp_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     if template_id == "projectile_motion":
         return projectile_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    if template_id == "bounce_restitution":
+        return bounce_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     raise ValueError(f"unsupported runnable template: {template_id}")
 
 
@@ -364,6 +367,46 @@ def projectile_case(template: dict[str, Any], params: dict[str, Any], *, index: 
     return add_m2_case_contract(case, template, params)
 
 
+def bounce_case(template: dict[str, Any], params: dict[str, Any], *, index: int, seed: int, should_pass: bool, negative_mode: str | None) -> dict[str, Any]:
+    drop_height = float(params["drop_height_m"])
+    restitution = float(params["restitution"])
+    radius = 0.12
+    min_ratio = max(0.02, restitution * restitution * 0.55)
+    max_ratio = min(1.1, restitution * restitution * 1.35 + 0.04)
+    objects = [
+        {
+            "id": "bounce_ball",
+            "role": "bouncing_body",
+            "shape": "sphere",
+            "radius_m": radius,
+            "mass_kg": params["ball_mass_kg"],
+            "restitution": restitution,
+            "initial_position_m": [0.0, 0.0, round(drop_height + radius, 4)],
+            "initial_velocity_m_s": [0.0, 0.0, 0.0],
+        },
+        {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]},
+    ]
+    case = base_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    case.update(
+        {
+            "prompt": f"Generated bounce case: a rigid body drops from {drop_height:.2f} m and rebounds according to restitution {restitution:.2f}.",
+            "expected_physics": {
+                "coordinate_system": "z_up",
+                "gravity_m_s2": params["gravity_m_s2"],
+                "drop_height_m": drop_height,
+                "restitution": restitution,
+                "expected_min_rebound_ratio": round(min_ratio, 4),
+                "expected_max_rebound_ratio": round(max_ratio, 4),
+                "support": "floor",
+            },
+            "objects": objects,
+            "active_objects": [],
+            "passive_objects": ["bounce_ball"],
+        }
+    )
+    return add_m2_case_contract(case, template, params)
+
+
 def add_m2_case_contract(case: dict[str, Any], template: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
     expected_physics = dict(case.get("expected_physics") or {})
     camera_policy = dict(template.get("camera_policy") or {})
@@ -427,6 +470,8 @@ def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
         return {"type": "friction_sensitive_downhill_motion", "contact_surface": expected_physics.get("contact_surface", "ramp")}
     if capability_id == "projectile_gravity_motion":
         return {"type": "projectile_landing", "support": expected_physics.get("support", "ground")}
+    if capability_id == "bounce_restitution_ball":
+        return {"type": "restitution_bounce", "support": expected_physics.get("support", "floor")}
     return {"type": "trajectory_event"}
 
 
@@ -441,6 +486,8 @@ def required_signals_for(capability_id: str) -> list[str]:
         return ["trajectory", "contact_events", "ramp_angle_label", "material_friction_label"]
     if capability_id == "projectile_gravity_motion":
         return ["trajectory", "contact_events", "gravity_label", "initial_velocity"]
+    if capability_id == "bounce_restitution_ball":
+        return ["trajectory", "contact_events", "gravity_label", "material_restitution_label"]
     return ["trajectory"]
 
 

@@ -26,6 +26,7 @@ PUBLIC_SOURCE_PATHS = [
     "capabilities/sequential_contact_propagation.json",
     "capabilities/ramp_sliding_friction.json",
     "capabilities/projectile_gravity_motion.json",
+    "capabilities/bounce_restitution_ball.json",
     "capabilities/capability_runtime_artifact_bridge.json",
     "capabilities/asset_intent_resolution.json",
     "capabilities/asset_runtime_binding_invocation.json",

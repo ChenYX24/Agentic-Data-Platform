@@ -16,7 +16,7 @@
 | `ramp_roll_gravity` | inclined plane | 已支持 capability + fallback trajectory + friction-aware verifier；新增 dynamic template | 接真实 UE ramp collider/contact 和 friction material |
 | `projectile_gravity_motion` | projectile / upward throw | 已支持 capability + fallback trajectory + apex/descent/contact verifier；新增 dynamic template | 接真实 UE projectile trajectory/contact |
 | `pendulum_constraint` | constraint motion | 本轮新增 template contract，不跑 runtime | 接 constraint trace / distance preservation metric |
-| `bounce_restitution_ball` | restitution | 未实现 | 加 bounce height / energy stability invariant |
+| `bounce_restitution_ball` | restitution | 已支持 capability + fallback trajectory + restitution-bounded verifier；新增 dynamic template | 接真实 UE restitution material/contact/export |
 | `rolling_friction_ball` | rolling friction | 未实现 | 加 rolling distance vs friction response |
 | `sliding_crate_friction` | sliding friction | 未实现 | 加 stop distance / static friction threshold |
 | `wind_balloon_drift` | force field wind | 未实现 | 加 wind vector and displacement invariant |

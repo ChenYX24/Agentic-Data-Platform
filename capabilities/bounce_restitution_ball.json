@@ -1,0 +1,51 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "bounce_restitution_ball",
+  "description": "Validate restitution-controlled rigid-body rebound after impact. The smoke family uses a ball dropping onto a support surface, but the invariant applies to any bouncing rigid body.",
+  "physical_assumptions": [
+    "The body descends under gravity before first contact.",
+    "The first rebound must happen after a recorded contact event.",
+    "Rebound height should be bounded by restitution and initial drop height.",
+    "Energy gain beyond the configured restitution envelope is invalid unless an external impulse is declared."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "gravity_label",
+    "material_restitution_label",
+    "initial_height"
+  ],
+  "required_assets": [
+    "bouncing rigid body",
+    "support collider",
+    "physics material with restitution"
+  ],
+  "verifier_rules": [
+    "Object descends before first contact.",
+    "First impact contact exists between bouncing body and support.",
+    "Post-contact rebound height is above the minimum restitution response.",
+    "Post-contact rebound height does not exceed the maximum allowed energy envelope."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Enable gravity and collision for the bouncing body.",
+    "Bind a support collider and export contact events.",
+    "Move restitution into structured physical_parameters or expected_physics.",
+    "If rebound is powered, declare an external impulse instead of using this passive bounce capability."
+  ],
+  "smoke_cases": [
+    "cases/bounce/high_restitution_bounce.json",
+    "cases/bounce/low_restitution_bounce.json"
+  ],
+  "regression_cases": [
+    "cases/bounce/negative_no_rebound.json",
+    "cases/bounce/negative_energy_gain.json",
+    "cases/bounce/negative_missing_contact.json"
+  ]
+}

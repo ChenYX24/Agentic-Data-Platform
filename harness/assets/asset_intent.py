@@ -25,6 +25,9 @@ PHYSICS_CRITICAL_ROLES = {
     "projectile",
     "thrown_body",
     "launched_body",
+    "bouncing_body",
+    "restitution_subject",
+    "bounce_subject",
 }
 
 

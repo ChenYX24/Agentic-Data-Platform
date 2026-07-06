@@ -51,6 +51,12 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
         terms=("projectile", "throw", "thrown", "upward throw", "launch angle", "parabolic", "抛体", "上抛", "抛出", "投掷", "发射角度"),
         priority=84,
     ),
+    CapabilityRule(
+        capability_id="bounce_restitution_ball",
+        case_family="bounce_restitution",
+        terms=("bounce", "bouncing", "rebound", "restitution", "drop and bounce", "弹跳", "反弹", "恢复系数", "落地反弹", "皮球反弹"),
+        priority=83,
+    ),
 )
 
 

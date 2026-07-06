@@ -1620,9 +1620,60 @@
         "Expected contact graph is present.",
         "Motion after render is explained by contact."
       ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Validate restitution-controlled rigid-body rebound after impact. The smoke family uses a ball dropping onto a support surface, but the invariant applies to any bouncing rigid body.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "bounce",
+            "restitution",
+            "contact"
+          ],
+          "source": "capabilities/bounce_restitution_ball.json:4",
+          "text": "Validate restitution-controlled rigid-body rebound after impact."
+        }
+      ],
+      "evidence_count": 1,
+      "failure_modes": [
+        "F1_missing_trajectory",
+        "F2_missing_contact_events",
+        "F3_invalid_initial_physics_state",
+        "F4_causality_violation",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "id": "bounce_restitution_ball",
+      "iteration_moves": [
+        "Inspect z trajectory before and after first support contact.",
+        "Check restitution label and rebound-height envelope before tuning material.",
+        "Reject energy gain unless an external impulse is declared."
+      ],
+      "pattern_type": "physics_property_capability",
+      "prompt_moves": [
+        "Identify bouncing body, support surface, drop height, restitution, gravity, and expected rebound envelope."
+      ],
+      "runtime_contract": [
+        "Bouncing body descends under gravity before first contact.",
+        "Impact contact event is exported.",
+        "Post-contact rebound height is bounded by restitution and initial drop height."
+      ],
+      "stage_ids": [
+        "case_spec_compilation",
+        "physics_control",
+        "runtime_artifact_collection",
+        "physics_verification"
+      ],
+      "title": "Bounce Restitution Validation",
+      "verifier_checks": [
+        "Object descends before first contact.",
+        "First impact contact exists.",
+        "Post-contact rebound height is not too low for restitution.",
+        "Post-contact rebound height does not exceed the allowed energy envelope."
+      ]
     }
   ],
-  "capability_count": 14,
+  "capability_count": 15,
   "iteration_playbook": [
     {
       "input": "README/docs, tests, runtime code, and public config",

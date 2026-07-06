@@ -28,6 +28,9 @@ agent-facing docs should use:
   damping/gravity/material/force constraints and parameter-sensitivity checks.
 - `pipeline_stage_orchestration`: explicit stage inputs/outputs from planning to
   artifact package, with no silent fallback.
+- `bounce_restitution_ball`: a concrete restitution validator that checks descent,
+  support contact, rebound height, and energy-envelope violations. It is a
+  reusable restitution invariant; the ball drop is only the smoke family.
 
 This keeps the harness useful beyond billiards: the same contact-causality
 contract can verify pool, bowling, crate impacts, and other contact-driven scenes.

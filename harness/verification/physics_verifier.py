@@ -6,6 +6,7 @@ from typing import Any
 from harness.core.artifact_schema import read_json, write_json
 from harness.core.verifier_schema import verifier_report
 from harness.verification.billiards_verifier import verify_billiards
+from harness.verification.bounce_verifier import verify_bounce
 from harness.verification.diagnosis import repair_suggestion
 from harness.verification.domino_verifier import verify_domino
 from harness.verification.falling_verifier import verify_falling
@@ -67,6 +68,8 @@ class PhysicsVerifier:
             failure_type, first_failure, evidence = verify_ramp(case_spec, trajectory)
         elif capability_id == "projectile_gravity_motion":
             failure_type, first_failure, evidence = verify_projectile(case_spec, trajectory)
+        elif capability_id == "bounce_restitution_ball":
+            failure_type, first_failure, evidence = verify_bounce(case_spec, trajectory)
         else:
             failure_type, first_failure, evidence = "F7_runtime_artifact_incomplete", {"object_id": capability_id, "frame": 0, "time": 0, "metric": "unsupported_capability", "value": capability_id}, []
         return verifier_report(

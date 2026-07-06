@@ -1,0 +1,26 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "low_restitution_bounce",
+  "capability_id": "bounce_restitution_ball",
+  "prompt": "A rigid ball drops onto a floor and makes a small low-restitution rebound after impact.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "gravity_m_s2": 9.81,
+    "drop_height_m": 1.1,
+    "restitution": 0.35,
+    "expected_min_rebound_ratio": 0.05,
+    "expected_max_rebound_ratio": 0.22,
+    "support": "floor"
+  },
+  "objects": [
+    {"id": "bounce_ball", "role": "bouncing_body", "shape": "sphere", "radius_m": 0.12, "mass_kg": 0.6, "restitution": 0.35, "initial_position_m": [0.0, 0.0, 1.22], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": [],
+  "passive_objects": ["bounce_ball"],
+  "required_assets": ["bouncing rigid body", "support collider", "restitution physics material"],
+  "required_signals": ["trajectory", "contact_events", "gravity_label", "material_restitution_label"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Positive low restitution case: rebound exists but remains small."
+}
