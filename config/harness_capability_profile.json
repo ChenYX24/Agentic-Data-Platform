@@ -1895,9 +1895,61 @@
           "text": "Angular damping requires explicit angular velocity labels, rotation trace, and monotonic spin-decay evidence."
         }
       ]
+    },
+    {
+      "id": "agent_rigidbody_action_coupling",
+      "title": "Agent Action To Rigid-Body Coupling",
+      "pattern_type": "physics_constraint",
+      "stage_ids": [
+        "action_trace_planning",
+        "physics_control",
+        "runtime_artifact_collection",
+        "physics_verification"
+      ],
+      "description": "Validate that agent or controller actions cause rigid-body motion through explicit action trace, contact or impulse evidence, and post-action trajectory response. Pushing a box or throwing a ball are smoke families.",
+      "prompt_moves": [
+        "Represent agent intent as structured action_trace events with actor_id, target_id, action_type, frame, and time.",
+        "Keep the target rigid body still before the action frame.",
+        "Use contact evidence for push actions and impulse/release metadata for throw actions."
+      ],
+      "runtime_contract": [
+        "trajectory",
+        "action_trace",
+        "contact_events",
+        "object_roles",
+        "post_action_velocity"
+      ],
+      "verifier_checks": [
+        "Action trace exists and references known actor/target ids.",
+        "Target initial and pre-action velocity stays below epsilon.",
+        "Push actions have agent-target contact evidence.",
+        "Throw actions have release or impulse metadata.",
+        "Target moves after the action above the expected threshold."
+      ],
+      "failure_modes": [
+        "F1_missing_trajectory",
+        "F2_missing_contact_events",
+        "F3_invalid_initial_physics_state",
+        "F4_causality_violation",
+        "F5_passive_precontact_motion",
+        "F7_runtime_artifact_incomplete"
+      ],
+      "iteration_moves": [
+        "Add action_trace to expected_physics or runtime artifacts.",
+        "Bind the target as a physics-critical rigid body and the agent as an action-producing actor.",
+        "Use negative cases for pre-action motion, missing action trace, and no post-action response."
+      ],
+      "confidence": 0.9,
+      "evidence_count": 5,
+      "evidence": [
+        {
+          "source": "capabilities/agent_rigidbody_action_coupling.json",
+          "text": "Agent-to-rigidbody coupling requires action trace, target rigid-body evidence, and post-action trajectory response."
+        }
+      ]
     }
   ],
-  "capability_count": 23,
+  "capability_count": 24,
   "iteration_playbook": [
     {
       "input": "README/docs, tests, runtime code, and public config",

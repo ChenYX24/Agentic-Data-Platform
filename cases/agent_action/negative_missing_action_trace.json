@@ -1,0 +1,32 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_missing_action_trace",
+  "capability_id": "agent_rigidbody_action_coupling",
+  "prompt": "A box moves as if pushed, but there is no structured action trace proving which agent action caused the motion.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "coupling_type": "push",
+    "action_actor_id": "agent",
+    "target_object_id": "box",
+    "action_type": "push",
+    "action_frame": 1,
+    "action_time_s": 0.2,
+    "expected_contact_pair": ["agent", "box"],
+    "expected_min_target_displacement_m": 0.18,
+    "expected_min_post_action_speed_m_s": 0.25,
+    "passive_pre_action_velocity_epsilon_m_s": 0.05
+  },
+  "objects": [
+    {"id": "agent", "role": "active_agent", "shape": "capsule", "initial_position_m": [-0.35, 0.0, 0.45], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "box", "role": "action_coupled_body", "shape": "box", "mass_kg": 1.2, "initial_position_m": [0.0, 0.0, 0.25], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["agent"],
+  "passive_objects": ["box"],
+  "required_assets": ["agent_controller_or_skeletal_actor", "action_coupled_rigid_body", "target_collider", "support_surface"],
+  "required_signals": ["trajectory", "action_trace", "contact_events", "object_roles", "post_action_velocity"],
+  "verifier_expectation": {"status": "fail", "failure_type": "F7_runtime_artifact_incomplete"},
+  "should_pass": false,
+  "negative_mode": "missing_action_trace",
+  "notes": "Regression: target motion without structured action trace is not reference-ready."
+}

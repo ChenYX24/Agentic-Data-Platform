@@ -57,6 +57,10 @@ agent-facing docs should use:
 - `angular_damping_spin_decay`: a concrete rotational-damping validator that
   checks angular velocity labels, angular damping, spin speed decay, and
   rotation trace evidence. The spinning sphere is only the smoke family.
+- `agent_rigidbody_action_coupling`: a concrete action-coupling validator that
+  checks explicit agent action traces, push contact or throw release evidence,
+  and post-action target rigid-body response. Push-box and throw-ball are only
+  smoke families.
 
 This keeps the harness useful beyond billiards: the same contact-causality
 contract can verify pool, bowling, crate impacts, and other contact-driven scenes.
@@ -336,6 +340,7 @@ Evidence:
 | Falling blocks | `rigid_body_gravity_collision` | Gravity/collision are enabled, z decreases, and support contact is recorded |
 | Domino chain | `sequential_contact_propagation` | First domino is actively triggered; downstream dominoes tip through ordered adjacent contacts |
 | Spin decay | `angular_damping_spin_decay` | Angular velocity and damping are explicit, and angular speed decays without unexplained gain |
+| Agent action coupling | `agent_rigidbody_action_coupling` | Target rigid bodies move after explicit action/contact or release/impulse evidence |
 
 ## Iteration Playbook
 

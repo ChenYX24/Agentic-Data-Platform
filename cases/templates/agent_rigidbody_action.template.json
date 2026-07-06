@@ -1,0 +1,52 @@
+{
+  "schema_version": "harness_case_template_v1",
+  "template_id": "agent_rigidbody_action",
+  "capability_id": "agent_rigidbody_action_coupling",
+  "fallback_supported": true,
+  "parameter_ranges": {
+    "target_mass_kg": {"type": "float", "min": 0.4, "max": 3.0},
+    "push_impulse_n_s": {"type": "float", "min": 0.6, "max": 2.2},
+    "throw_speed_m_s": {"type": "float", "min": 1.2, "max": 4.0},
+    "action_time_s": {"type": "float", "min": 0.2, "max": 0.45}
+  },
+  "object_count_ranges": {
+    "active_agent": {"min": 1, "max": 1},
+    "action_coupled_body": {"min": 1, "max": 1},
+    "support": {"min": 1, "max": 1}
+  },
+  "physics_critical_assets": [
+    "agent_controller_or_skeletal_actor",
+    "action_coupled_rigid_body",
+    "target_collider",
+    "support_surface"
+  ],
+  "visual_only_assets": [
+    "agent_label",
+    "action_arrow"
+  ],
+  "camera_policy": {
+    "default": "side_static",
+    "allowed": ["side_static", "top_down", "tracking_subject", "event_closeup"]
+  },
+  "perturbation_policy": {
+    "positive_ratio": 0.7,
+    "negative_modes": ["preaction_motion", "missing_action_trace", "no_post_action_motion"]
+  },
+  "expected_invariants": [
+    "agent action trace is explicit",
+    "target rigid body starts still",
+    "target motion starts after action frame",
+    "push actions have contact evidence",
+    "throw actions have impulse or release metadata",
+    "post-action response exceeds minimum displacement or speed"
+  ],
+  "negative_modes": [
+    "preaction_motion",
+    "missing_action_trace",
+    "no_post_action_motion"
+  ],
+  "seed_policy": {
+    "deterministic": true,
+    "sample_parameters_from_seed": true
+  }
+}

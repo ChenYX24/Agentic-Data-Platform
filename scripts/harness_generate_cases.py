@@ -23,7 +23,7 @@ TEMPLATE_SCHEMA_VERSION = "harness_case_template_v1"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate parameterized harness case specs from a template.")
     parser.add_argument("--template", help="Path to cases/templates/*.template.json")
-    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "bounce", "rolling", "sliding", "wind", "mass_ratio", "spin", "basic_physics"], help="Named case suite shortcut.")
+    parser.add_argument("--suite", choices=["billiards", "domino", "falling", "ramp", "projectile", "bounce", "rolling", "sliding", "wind", "mass_ratio", "spin", "agent_action", "basic_physics"], help="Named case suite shortcut.")
     parser.add_argument("--num-cases", type=int, help="Number of case specs to generate.")
     parser.add_argument("--count", type=int, help="Alias for --num-cases.")
     parser.add_argument("--seed", type=int, default=0, help="Deterministic generation seed.")
@@ -98,6 +98,7 @@ def template_for_suite(suite: str | None) -> str | None:
         "wind": "cases/templates/wind_balloon_drift.template.json",
         "mass_ratio": "cases/templates/mass_ratio_collision.template.json",
         "spin": "cases/templates/angular_damping_spin.template.json",
+        "agent_action": "cases/templates/agent_rigidbody_action.template.json",
         "basic_physics": "cases/templates/falling_blocks.template.json",
     }[suite]
 
@@ -143,6 +144,8 @@ def generate_case(template: dict[str, Any], rng: random.Random, *, index: int, s
         return mass_ratio_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     if template_id == "angular_damping_spin":
         return spin_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    if template_id == "agent_rigidbody_action":
+        return agent_action_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
     raise ValueError(f"unsupported runnable template: {template_id}")
 
 
@@ -698,6 +701,75 @@ def spin_case(template: dict[str, Any], params: dict[str, Any], *, index: int, s
     return add_m2_case_contract(case, template, params)
 
 
+def agent_action_case(template: dict[str, Any], params: dict[str, Any], *, index: int, seed: int, should_pass: bool, negative_mode: str | None) -> dict[str, Any]:
+    action_time = float(params["action_time_s"])
+    action_frame = 1
+    coupling_type = "throw" if index % 3 == 1 and negative_mode != "no_post_action_motion" else "push"
+    target_id = "ball" if coupling_type == "throw" else "box"
+    target_shape = "sphere" if coupling_type == "throw" else "box"
+    target_z = 0.8 if coupling_type == "throw" else 0.25
+    impulse = [round(float(params["throw_speed_m_s"]) * 0.75, 4), 0.0, round(float(params["throw_speed_m_s"]) * 0.5, 4)] if coupling_type == "throw" else [round(float(params["push_impulse_n_s"]), 4), 0.0, 0.0]
+    min_speed = max(0.2, float(params["throw_speed_m_s"]) * 0.35) if coupling_type == "throw" else max(0.12, float(params["push_impulse_n_s"]) * 0.22)
+    min_displacement = 0.28 if coupling_type == "throw" else 0.14
+    expected = {
+        "coordinate_system": "z_up",
+        "coupling_type": coupling_type,
+        "action_actor_id": "agent",
+        "target_object_id": target_id,
+        "action_type": coupling_type,
+        "action_frame": action_frame,
+        "action_time_s": round(action_time, 4),
+        "expected_contact_pair": ["agent", target_id],
+        "expected_min_target_displacement_m": round(min_displacement, 4),
+        "expected_min_post_action_speed_m_s": round(min_speed, 4),
+        "passive_pre_action_velocity_epsilon_m_s": 0.05,
+        "action_trace": [
+            {
+                "frame": action_frame,
+                "time_s": round(action_time, 4),
+                "actor_id": "agent",
+                "target_id": target_id,
+                "action_type": coupling_type,
+                "release": coupling_type == "throw",
+                "impulse_n_s": impulse,
+            }
+        ],
+    }
+    if negative_mode == "missing_action_trace":
+        expected.pop("action_trace", None)
+    objects = [
+        {
+            "id": "agent",
+            "role": "active_agent",
+            "shape": "capsule",
+            "initial_position_m": [-0.35, 0.0, 0.45 if coupling_type == "push" else 0.75],
+            "initial_velocity_m_s": [0.0, 0.0, 0.0],
+        },
+        {
+            "id": target_id,
+            "role": "action_coupled_body",
+            "shape": target_shape,
+            "mass_kg": params["target_mass_kg"],
+            "initial_position_m": [0.0, 0.0, target_z],
+            "initial_velocity_m_s": [0.0, 0.0, 0.0],
+        },
+        {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]},
+    ]
+    if target_shape == "sphere":
+        objects[1]["radius_m"] = 0.12
+    case = base_case(template, params, index=index, seed=seed, should_pass=should_pass, negative_mode=negative_mode)
+    case.update(
+        {
+            "prompt": f"Generated agent-action case: an agent performs a {coupling_type} action on a rigid body; the target can move only after action evidence.",
+            "expected_physics": expected,
+            "objects": objects,
+            "active_objects": ["agent"],
+            "passive_objects": [target_id],
+        }
+    )
+    return add_m2_case_contract(case, template, params)
+
+
 def collision_speeds(striker_mass: float, target_mass: float, initial_speed: float, restitution: float) -> tuple[float, float]:
     denominator = max(striker_mass + target_mass, 1e-9)
     striker_post = ((striker_mass - restitution * target_mass) / denominator) * initial_speed
@@ -781,6 +853,14 @@ def expected_event_for(case: dict[str, Any]) -> dict[str, Any]:
         return {"type": "mass_ratio_momentum_transfer", "collision_graph": expected_physics.get("collision_graph", []), "expected_velocity_order": expected_physics.get("expected_velocity_order")}
     if capability_id == "angular_damping_spin_decay":
         return {"type": "angular_damping_spin_decay", "spin_axis": expected_physics.get("spin_axis", "z")}
+    if capability_id == "agent_rigidbody_action_coupling":
+        return {
+            "type": "agent_rigidbody_action_coupling",
+            "action_type": expected_physics.get("action_type"),
+            "actor_id": expected_physics.get("action_actor_id"),
+            "target_id": expected_physics.get("target_object_id"),
+            "action_frame": expected_physics.get("action_frame"),
+        }
     return {"type": "trajectory_event"}
 
 
@@ -807,6 +887,8 @@ def required_signals_for(capability_id: str) -> list[str]:
         return ["trajectory", "contact_events", "mass_labels", "post_collision_velocity"]
     if capability_id == "angular_damping_spin_decay":
         return ["trajectory", "rotation_trace", "angular_velocity", "angular_damping_label"]
+    if capability_id == "agent_rigidbody_action_coupling":
+        return ["trajectory", "action_trace", "contact_events", "object_roles", "post_action_velocity"]
     return ["trajectory"]
 
 
@@ -821,6 +903,10 @@ def expected_failure_for(negative_mode: str | None) -> str:
         return "F3_invalid_initial_physics_state"
     if negative_mode in {"missing_angular_velocity_label"}:
         return "F3_invalid_initial_physics_state"
+    if negative_mode in {"missing_action_trace"}:
+        return "F7_runtime_artifact_incomplete"
+    if negative_mode in {"preaction_motion"}:
+        return "F5_passive_precontact_motion"
     return "F4_causality_violation"
 
 

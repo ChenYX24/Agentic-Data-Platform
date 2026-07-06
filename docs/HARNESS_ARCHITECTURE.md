@@ -65,7 +65,7 @@ Agent 可以：
 - generic rigid-body contact causality
 - rigid body gravity/collision
 - sequential contact propagation
-- physical property constraints: restitution, rolling/sliding friction, wind/force field, mass-ratio momentum, angular damping spin decay
+- physical property constraints: restitution, rolling/sliding friction, wind/force field, mass-ratio momentum, angular damping spin decay, agent action to rigid-body coupling
 - asset intent resolution
 - asset runtime binding invocation
 - scene spec compilation

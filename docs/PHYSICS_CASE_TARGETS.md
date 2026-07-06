@@ -22,6 +22,6 @@
 | `wind_balloon_drift` | force field wind | 已支持 `force_field_wind_drift` capability + fallback trajectory + wind-vector drift verifier；新增 dynamic template | 接真实 UE force field / wind volume / trajectory export |
 | `mass_ratio_collision` | momentum transfer | 已支持 `mass_ratio_momentum_transfer` capability + fallback trajectory + mass-ratio velocity/energy verifier；新增 dynamic template | 接真实 UE mass labels / contact impulse / post-collision velocity export |
 | `angular_damping_spin` | rotational damping | 已支持 `angular_damping_spin_decay` capability + fallback angular velocity trace + spin-decay verifier；新增 dynamic template | 接真实 UE angular velocity / angular damping / inertia export |
-| `agent_push_box` / `agent_throw_ball` | agent-to-rigidbody | 未实现 | 需要 action trace + skeletal/rigid body coupling |
+| `agent_push_box` / `agent_throw_ball` | agent-to-rigidbody | 已支持 `agent_rigidbody_action_coupling` capability + fallback action trace + causality verifier；新增 dynamic template | 接真实 UE agent action trace / skeletal controller / impulse export |
 | `fixed_camera_comparison` | multi-view alignment | 依赖 UE render pass | 接 camera trajectory/timebase verifier |
 | `engine_state_timeline` | runtime state alignment | 依赖 UE instrumentation | 接 engine states / Chaos trace |

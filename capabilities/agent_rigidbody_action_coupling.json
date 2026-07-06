@@ -1,0 +1,66 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "agent_rigidbody_action_coupling",
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "action_trace_planning",
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
+  ],
+  "description": "Validate that agent or controller actions cause rigid-body motion through an explicit action trace, contact/impulse evidence, and post-action trajectory response. Pushing a box or throwing a ball are smoke families, not separate core capabilities.",
+  "physical_assumptions": [
+    "Agent actions are structured action trace events, not hidden keyframes.",
+    "Action-coupled rigid bodies start with zero unexplained motion.",
+    "Rigid-body response must happen after an agent action and matching contact or impulse evidence.",
+    "Push actions require contact evidence; throw/release actions require an impulse or release label.",
+    "The agent may be kinematic or skeletal, but the target rigid body must remain physics-critical."
+  ],
+  "required_signals": [
+    "trajectory",
+    "action_trace",
+    "contact_events",
+    "object_roles",
+    "initial_velocity",
+    "post_action_velocity"
+  ],
+  "required_assets": [
+    "agent controller or skeletal actor",
+    "action-coupled rigid body",
+    "target collider",
+    "physics material",
+    "action trace export"
+  ],
+  "verifier_rules": [
+    "Action trace contains actor_id, target_id, action_type, frame, and time_s.",
+    "Action-coupled target starts below velocity epsilon.",
+    "Target displacement and velocity before first action stay below epsilon.",
+    "Push actions include agent-target contact evidence near the action frame.",
+    "Throw/release actions include impulse or release metadata.",
+    "Target moves after the action above the expected threshold."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F5_passive_precontact_motion",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Write structured action_trace events instead of relying on prompt prose or animation.",
+    "Clear target initial velocity before the action frame.",
+    "Bind the target as a physics-critical rigid body with collider and collision profile.",
+    "Export agent-target contact for push actions or impulse/release labels for throw actions.",
+    "Move post-action target motion into runtime physics instead of keyframing."
+  ],
+  "smoke_cases": [
+    "cases/agent_action/agent_push_box_contact.json",
+    "cases/agent_action/agent_throw_ball_release.json"
+  ],
+  "regression_cases": [
+    "cases/agent_action/negative_target_preaction_motion.json",
+    "cases/agent_action/negative_missing_action_trace.json",
+    "cases/agent_action/negative_no_post_action_motion.json"
+  ]
+}

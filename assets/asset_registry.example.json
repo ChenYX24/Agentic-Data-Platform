@@ -53,7 +53,7 @@
       "asset_id": "analytic_crate_box",
       "category": "physics_critical",
       "type": "static_mesh",
-      "tags": ["box", "crate", "sliding_subject", "sliding_body", "sliding_crate", "friction_subject", "falling_body", "stack_block"],
+      "tags": ["box", "crate", "sliding_subject", "sliding_body", "sliding_crate", "friction_subject", "falling_body", "stack_block", "action_coupled_body", "pushed_body", "rigid_body_payload"],
       "ue_path": "/Engine/BasicShapes/Cube.Cube",
       "collider": "box",
       "mass_kg": 1.0,
@@ -63,6 +63,22 @@
         "restitution": 0.2
       },
       "collision_profile": "PhysicsActor",
+      "proxy": true
+    },
+    {
+      "asset_id": "analytic_agent_capsule_controller",
+      "category": "physics_critical",
+      "type": "analytic_actor",
+      "tags": ["agent", "active_agent", "agent_controller", "pushing_agent", "throwing_agent", "capsule"],
+      "ue_path": "/Script/Engine.Pawn",
+      "collider": "capsule",
+      "mass_kg": 80.0,
+      "material": {
+        "static_friction": 0.6,
+        "dynamic_friction": 0.45,
+        "restitution": 0.05
+      },
+      "collision_profile": "Pawn",
       "proxy": true
     },
     {

@@ -23,11 +23,14 @@ def write_runtime_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = run_dir.name
     contact_events = extract_contact_events(trajectory)
+    action_trace = extract_action_trace(trajectory)
     write_json(run_dir / "case_spec.json", case_spec)
     write_json(output_dir / "trajectory.json", trajectory)
     write_json(output_dir / "contact_events.json", contact_events)
+    write_json(output_dir / "action_trace.json", action_trace)
     write_json(run_dir / "trajectory.json", trajectory)
     write_json(run_dir / "contact_events.json", contact_events)
+    write_json(run_dir / "action_trace.json", action_trace)
     write_json(
         run_dir / "camera_trajectory.json",
         {
@@ -45,6 +48,7 @@ def write_runtime_artifacts(
             "trajectory_source": f"{backend}_deterministic_toy",
             "frames": len(trajectory),
             "contact_event_count": len(contact_events),
+            "action_event_count": len(action_trace),
             "runtime_boundary": "deterministic toy backend; not proof of native UE physics",
         },
     )
@@ -141,6 +145,7 @@ def write_runtime_artifacts(
                 "case_spec": "case_spec.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
+                "action_trace": "action_trace.json",
                 "camera_trajectory": "camera_trajectory.json",
                 "camera_plan": "camera_plan.json",
                 "summary": f"{output_dir.name}/summary.json",
@@ -162,6 +167,7 @@ def write_runtime_artifacts(
                 "case_spec": "case_spec.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
+                "action_trace": "action_trace.json",
                 "camera_trajectory": "camera_trajectory.json",
                 "camera_plan": "camera_plan.json",
                 "summary": f"{output_dir.name}/summary.json",
@@ -185,6 +191,21 @@ def extract_contact_events(trajectory: list[dict[str, Any]]) -> list[dict[str, A
             if not isinstance(contact, dict):
                 continue
             row = dict(contact)
+            row.setdefault("frame", frame_id)
+            row.setdefault("time_s", time_s)
+            events.append(row)
+    return events
+
+
+def extract_action_trace(trajectory: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for frame in trajectory:
+        frame_id = int(frame.get("frame") or 0)
+        time_s = float(frame.get("time_s") or 0.0)
+        for action in frame.get("actions") or []:
+            if not isinstance(action, dict):
+                continue
+            row = dict(action)
             row.setdefault("frame", frame_id)
             row.setdefault("time_s", time_s)
             events.append(row)

@@ -155,6 +155,7 @@ Verifier 不检查“画面是否动了”，而检查 capability invariants：
 | `rigid_body_gravity_collision` | object must descend under gravity and reach support/contact |
 | `physics_property_constraint_validation` | mass/friction/restitution/damping/gravity controls must be typed, bounded, and echoed by runtime artifacts |
 | `angular_damping_spin_decay` | angular velocity and damping must be explicit, and spin speed must decay without unexplained gain |
+| `agent_rigidbody_action_coupling` | target rigid bodies must remain still before explicit agent action trace and respond after contact/impulse evidence |
 | `asset_runtime_binding_invocation` | physics-critical assets must bind colliders, mass/material metadata, collision profile, and runtime actor ids |
 
 验证命令：

@@ -40,6 +40,13 @@ PHYSICS_CRITICAL_ROLES = {
     "spinning_body",
     "spin_subject",
     "angular_damping_subject",
+    "active_agent",
+    "agent_controller",
+    "pushing_agent",
+    "throwing_agent",
+    "action_coupled_body",
+    "pushed_body",
+    "rigid_body_payload",
 }
 
 

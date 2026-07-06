@@ -59,6 +59,8 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
         return mass_ratio_trajectory(case_id, case_spec)
     if capability_id == "angular_damping_spin_decay":
         return spin_trajectory(case_id, case_spec)
+    if capability_id == "agent_rigidbody_action_coupling":
+        return agent_action_trajectory(case_id, case_spec)
     return []
 
 
@@ -477,6 +479,84 @@ def spin_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, A
     return frames
 
 
+def agent_action_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    negative_mode = str(case_spec.get("negative_mode") or "")
+    if not negative_mode and "preaction" in case_id:
+        negative_mode = "preaction_motion"
+    if not negative_mode and "missing_action_trace" in case_id:
+        negative_mode = "missing_action_trace"
+    if not negative_mode and "no_post_action" in case_id:
+        negative_mode = "no_post_action_motion"
+
+    object_specs = {str(obj.get("id")): obj for obj in case_spec.get("objects", []) if isinstance(obj, dict)}
+    expected = dict(case_spec.get("expected_physics") or {})
+    actor_id = str(expected.get("action_actor_id") or next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"active_agent", "agent_controller", "pushing_agent", "throwing_agent"}), "agent"))
+    target_id = str(expected.get("target_object_id") or next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"action_coupled_body", "pushed_body", "thrown_body", "rigid_body_payload"}), "target"))
+    support_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"support", "floor", "ground"}), "floor")
+    actor_spec = object_specs.get(actor_id) or {"initial_position_m": [-0.35, 0.0, 0.45], "initial_velocity_m_s": [0.0, 0.0, 0.0]}
+    target_spec = object_specs.get(target_id) or {"initial_position_m": [0.0, 0.0, 0.25], "initial_velocity_m_s": [0.0, 0.0, 0.0]}
+    support_state = state(vec3((object_specs.get(support_id) or {}).get("initial_position_m") or [0.0, 0.0, 0.0]), [0.0, 0.0, 0.0])
+    actor_p0 = vec3(actor_spec.get("initial_position_m") or [-0.35, 0.0, 0.45])
+    target_p0 = vec3(target_spec.get("initial_position_m") or [0.0, 0.0, 0.25])
+    actor_state = state(actor_p0, vec3(actor_spec.get("initial_velocity_m_s") or [0.0, 0.0, 0.0]))
+    target_initial_velocity = [0.0, 0.0, 0.0]
+    if negative_mode == "preaction_motion":
+        target_initial_velocity = [0.16, 0.0, 0.0]
+    coupling_type = str(expected.get("coupling_type") or "push")
+    action_frame = int(expected.get("action_frame") or 1)
+    action_time = float(expected.get("action_time_s") or 0.2)
+    action_trace = [dict(action) for action in expected.get("action_trace") or [] if isinstance(action, dict)]
+    if not action_trace and negative_mode != "missing_action_trace":
+        action_trace = [
+            {
+                "frame": action_frame,
+                "time_s": action_time,
+                "actor_id": actor_id,
+                "target_id": target_id,
+                "action_type": coupling_type,
+                "impulse_n_s": [1.0, 0.0, 0.0],
+            }
+        ]
+
+    initial = {
+        support_id: support_state,
+        actor_id: actor_state,
+        target_id: state(target_p0, target_initial_velocity),
+    }
+    pre_target_position = target_p0
+    if negative_mode == "preaction_motion":
+        pre_target_position = [round(target_p0[0] + 0.06, 4), target_p0[1], target_p0[2]]
+    pre = {
+        support_id: support_state,
+        actor_id: state(midpoint(actor_p0, target_p0, 0.75), [0.2, 0.0, 0.0]),
+        target_id: state(pre_target_position, target_initial_velocity),
+    }
+    action_velocity = [0.0, 0.0, 0.0] if negative_mode == "no_post_action_motion" else [0.85, 0.0, 0.0]
+    action_position = pre_target_position if negative_mode == "no_post_action_motion" else [round(target_p0[0] + 0.16, 4), target_p0[1], target_p0[2]]
+    if coupling_type in {"throw", "release"}:
+        action_velocity = [1.8, 0.0, 1.2] if negative_mode != "no_post_action_motion" else [0.0, 0.0, 0.0]
+        action_position = pre_target_position if negative_mode == "no_post_action_motion" else [round(target_p0[0] + 0.22, 4), target_p0[1], round(target_p0[2] + 0.18, 4)]
+    action_frame_state = {
+        support_id: support_state,
+        actor_id: state(midpoint(actor_p0, target_p0, 0.92), [0.0, 0.0, 0.0]),
+        target_id: state(action_position, action_velocity),
+    }
+    final_position = action_position if negative_mode == "no_post_action_motion" else [round(action_position[0] + max(abs(action_velocity[0]) * 0.18, 0.14), 4), action_position[1], round(max(0.18, action_position[2] + action_velocity[2] * 0.08 - 0.04), 4)]
+    final = {
+        support_id: support_state,
+        actor_id: action_frame_state[actor_id],
+        target_id: state(final_position, [round(action_velocity[0] * 0.65, 4), 0.0, round(action_velocity[2] * 0.45, 4)]),
+    }
+    contacts = [] if negative_mode == "missing_contact" else [contact(actor_id, target_id, action_frame, action_time)]
+    actions = [] if negative_mode == "missing_action_trace" else action_trace
+    return [
+        frame(0, 0.0, initial),
+        frame(max(0, action_frame - 1), max(0.0, round(action_time * 0.5, 4)), pre),
+        frame(action_frame, action_time, action_frame_state, contacts=contacts, actions=actions),
+        frame(action_frame + 1, round(action_time + 0.25, 4), final),
+    ]
+
+
 def state(position: list[float], velocity: list[float], *, rotation: list[float] | None = None, angular_velocity: list[float] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"position_m": position, "velocity_m_s": velocity, "rotation_deg": rotation or [0, 0, 0]}
     if angular_velocity is not None:
@@ -507,8 +587,11 @@ def vec3(value: Any) -> list[float]:
     return [float(padded[0]), float(padded[1]), float(padded[2])]
 
 
-def frame(frame_id: int, time_s: float, objects: dict[str, Any], *, contacts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    return {"frame": frame_id, "time_s": time_s, "objects": objects, "contacts": contacts or []}
+def frame(frame_id: int, time_s: float, objects: dict[str, Any], *, contacts: list[dict[str, Any]] | None = None, actions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {"frame": frame_id, "time_s": time_s, "objects": objects, "contacts": contacts or []}
+    if actions is not None:
+        result["actions"] = actions
+    return result
 
 
 def contact(a: str, b: str, frame_id: int, time_s: float) -> dict[str, Any]:

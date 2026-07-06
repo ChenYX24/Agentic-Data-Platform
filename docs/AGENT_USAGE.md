@@ -126,6 +126,9 @@ object templates. Examples: `rolling_friction_ball` for rolling stop distance,
 `sliding_crate_friction` for static/dynamic friction, `mass_ratio_momentum_transfer`
 for post-contact velocity ordering, and `angular_damping_spin_decay` for angular
 velocity / damping / rotation-trace checks.
+Agent-interaction prompts should use `agent_rigidbody_action_coupling`: the
+agent action must be an explicit `action_trace`, and target rigid-body motion
+must happen after action/contact or release/impulse evidence.
 
 ## Generic Contact Causality Rule
 

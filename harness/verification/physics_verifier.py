@@ -5,6 +5,7 @@ from typing import Any
 
 from harness.core.artifact_schema import read_json, write_json
 from harness.core.verifier_schema import verifier_report
+from harness.verification.agent_action_verifier import verify_agent_action
 from harness.verification.billiards_verifier import verify_billiards
 from harness.verification.bounce_verifier import verify_bounce
 from harness.verification.diagnosis import repair_suggestion
@@ -85,6 +86,8 @@ class PhysicsVerifier:
             failure_type, first_failure, evidence = verify_mass_ratio(case_spec, trajectory)
         elif capability_id == "angular_damping_spin_decay":
             failure_type, first_failure, evidence = verify_spin(case_spec, trajectory)
+        elif capability_id == "agent_rigidbody_action_coupling":
+            failure_type, first_failure, evidence = verify_agent_action(case_spec, trajectory)
         else:
             failure_type, first_failure, evidence = "F7_runtime_artifact_incomplete", {"object_id": capability_id, "frame": 0, "time": 0, "metric": "unsupported_capability", "value": capability_id}, []
         return verifier_report(

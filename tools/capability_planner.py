@@ -87,6 +87,12 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
         terms=("angular damping", "spin decay", "spinning body", "angular velocity", "rotational damping", "spin slows", "spin down", "角阻尼", "角速度", "旋转衰减", "自转", "旋转变慢"),
         priority=79,
     ),
+    CapabilityRule(
+        capability_id="agent_rigidbody_action_coupling",
+        case_family="agent_rigidbody_action",
+        terms=("agent pushes", "agent push", "robot pushes", "robot push", "character pushes", "character throws", "agent throws", "agent throw", "robot throws", "action trace", "agent-to-rigidbody", "agent rigid body", "推箱子", "智能体推", "机器人推", "角色推", "智能体抛", "角色抛", "动作轨迹"),
+        priority=107,
+    ),
 )
 
 

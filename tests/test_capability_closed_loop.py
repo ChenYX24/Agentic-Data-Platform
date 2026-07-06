@@ -35,6 +35,7 @@ class CapabilityClosedLoopTests(unittest.TestCase):
         self.assertTrue(self.planner.profile.has("force_field_wind_drift"))
         self.assertTrue(self.planner.profile.has("mass_ratio_momentum_transfer"))
         self.assertTrue(self.planner.profile.has("angular_damping_spin_decay"))
+        self.assertTrue(self.planner.profile.has("agent_rigidbody_action_coupling"))
 
     def test_billiards_prompt_maps_to_generic_contact_causality(self) -> None:
         plan = self.planner.plan("A pool table with a cue ball hitting passive target balls.")
