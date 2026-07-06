@@ -25,15 +25,18 @@ def write_runtime_artifacts(
     contact_events = extract_contact_events(trajectory)
     action_trace = extract_action_trace(trajectory)
     constraint_trace = extract_constraint_trace(trajectory)
+    spring_events = extract_spring_events(trajectory)
     write_json(run_dir / "case_spec.json", case_spec)
     write_json(output_dir / "trajectory.json", trajectory)
     write_json(output_dir / "contact_events.json", contact_events)
     write_json(output_dir / "action_trace.json", action_trace)
     write_json(output_dir / "constraint_trace.json", constraint_trace)
+    write_json(output_dir / "spring_events.json", spring_events)
     write_json(run_dir / "trajectory.json", trajectory)
     write_json(run_dir / "contact_events.json", contact_events)
     write_json(run_dir / "action_trace.json", action_trace)
     write_json(run_dir / "constraint_trace.json", constraint_trace)
+    write_json(run_dir / "spring_events.json", spring_events)
     write_json(
         run_dir / "camera_trajectory.json",
         {
@@ -53,6 +56,7 @@ def write_runtime_artifacts(
             "contact_event_count": len(contact_events),
             "action_event_count": len(action_trace),
             "constraint_event_count": len(constraint_trace),
+            "spring_event_count": len(spring_events),
             "runtime_boundary": "deterministic toy backend; not proof of native UE physics",
         },
     )
@@ -151,6 +155,7 @@ def write_runtime_artifacts(
                 "contact_events": "contact_events.json",
                 "action_trace": "action_trace.json",
                 "constraint_trace": "constraint_trace.json",
+                "spring_events": "spring_events.json",
                 "camera_trajectory": "camera_trajectory.json",
                 "camera_plan": "camera_plan.json",
                 "summary": f"{output_dir.name}/summary.json",
@@ -174,6 +179,7 @@ def write_runtime_artifacts(
                 "contact_events": "contact_events.json",
                 "action_trace": "action_trace.json",
                 "constraint_trace": "constraint_trace.json",
+                "spring_events": "spring_events.json",
                 "camera_trajectory": "camera_trajectory.json",
                 "camera_plan": "camera_plan.json",
                 "summary": f"{output_dir.name}/summary.json",
@@ -227,6 +233,21 @@ def extract_constraint_trace(trajectory: list[dict[str, Any]]) -> list[dict[str,
             if not isinstance(constraint, dict):
                 continue
             row = dict(constraint)
+            row.setdefault("frame", frame_id)
+            row.setdefault("time_s", time_s)
+            events.append(row)
+    return events
+
+
+def extract_spring_events(trajectory: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for frame in trajectory:
+        frame_id = int(frame.get("frame") or 0)
+        time_s = float(frame.get("time_s") or 0.0)
+        for event in (frame.get("spring_events") or frame.get("elastic_events") or []):
+            if not isinstance(event, dict):
+                continue
+            row = dict(event)
             row.setdefault("frame", frame_id)
             row.setdefault("time_s", time_s)
             events.append(row)

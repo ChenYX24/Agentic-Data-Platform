@@ -1,0 +1,33 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "vertical_spring_launch",
+  "capability_id": "elastic_energy_launch",
+  "prompt": "A vertical compressed launcher releases a payload upward with bounded elastic energy.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "launcher_object_id": "spring",
+    "launched_object_id": "payload",
+    "spring_constant_n_m": 160.0,
+    "compression_m": 0.16,
+    "payload_mass_kg": 0.45,
+    "release_frame": 1,
+    "release_time_s": 0.2,
+    "launch_angle_deg": 82.0,
+    "expected_min_launch_speed_m_s": 1.0,
+    "expected_max_energy_ratio": 1.25,
+    "expected_min_height_gain_m": 0.22,
+    "expected_min_forward_displacement_m": 0.03
+  },
+  "objects": [
+    {"id": "spring", "role": "elastic_launcher", "shape": "spring_proxy", "spring_constant_n_m": 160.0, "compression_m": 0.16, "initial_position_m": [0.0, 0.0, 0.1], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "payload", "role": "launched_body", "shape": "sphere", "radius_m": 0.12, "mass_kg": 0.45, "initial_position_m": [0.0, 0.0, 0.22], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["spring"],
+  "passive_objects": ["payload"],
+  "required_assets": ["elastic launcher", "launched rigid body", "support"],
+  "required_signals": ["trajectory", "spring_events", "energy_labels"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Golden near-vertical elastic-energy launch case."
+}

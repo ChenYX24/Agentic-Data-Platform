@@ -161,6 +161,7 @@ Verifier 不检查“画面是否动了”，而检查 capability invariants：
 | `agent_rigidbody_action_coupling` | target rigid bodies must remain still before explicit agent action trace and respond after contact/impulse evidence |
 | `constraint_distance_pendulum_motion` | constrained bodies must preserve anchor-body distance within tolerance and move continuously without teleporting |
 | `constraint_momentum_transfer` | constrained chain bodies must start still, adjacent contacts must be ordered, and terminal receiver response must follow final contact |
+| `elastic_energy_launch` | launched body must start still, release event must exist, and post-release speed/energy must match the stored elastic-energy envelope |
 | `asset_runtime_binding_invocation` | physics-critical assets must bind colliders, mass/material metadata, collision profile, and runtime actor ids |
 
 验证命令：

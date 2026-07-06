@@ -21,7 +21,7 @@ class CapabilityClosedLoopTests(unittest.TestCase):
 
     def test_capability_profile_can_be_read_by_planner(self) -> None:
         self.assertTrue(self.planner.profile.has("rigid_body_contact_causality"))
-        self.assertTrue(self.planner.profile.has("billiard_causality_compiler"))
+        self.assertFalse(self.planner.profile.has("billiard_causality_compiler"))
         self.assertTrue(self.planner.profile.has("rigid_body_gravity_collision"))
         self.assertTrue(self.planner.profile.has("sequential_contact_propagation"))
         self.assertTrue(self.planner.profile.has("bounce_restitution_ball"))
@@ -38,6 +38,7 @@ class CapabilityClosedLoopTests(unittest.TestCase):
         self.assertTrue(self.planner.profile.has("agent_rigidbody_action_coupling"))
         self.assertTrue(self.planner.profile.has("constraint_distance_pendulum_motion"))
         self.assertTrue(self.planner.profile.has("constraint_momentum_transfer"))
+        self.assertTrue(self.planner.profile.has("elastic_energy_launch"))
 
     def test_billiards_prompt_maps_to_generic_contact_causality(self) -> None:
         plan = self.planner.plan("A pool table with a cue ball hitting passive target balls.")
@@ -60,6 +61,10 @@ class CapabilityClosedLoopTests(unittest.TestCase):
     def test_newton_cradle_prompt_maps_to_constraint_momentum_transfer(self) -> None:
         plan = self.planner.plan("A Newton's cradle transfers impulse through a suspended ball chain.")
         self.assertEqual(plan["primary_capability_id"], "constraint_momentum_transfer")
+
+    def test_spring_prompt_maps_to_elastic_energy_launch(self) -> None:
+        plan = self.planner.plan("A compressed spring launches a payload from elastic energy.")
+        self.assertEqual(plan["primary_capability_id"], "elastic_energy_launch")
 
     def test_verifier_rejects_passive_target_pre_contact_velocity(self) -> None:
         plan = self.planner.plan("billiards cue ball hits passive target")

@@ -102,6 +102,7 @@ assets/*.local.json
 | `agent_rigidbody_action_coupling` | 当前分支已可用 | agent/robot/character 动作必须写成 action trace；目标刚体只能在 action/contact 或 release/impulse 证据后运动。 |
 | `constraint_distance_pendulum_motion` | 当前分支已可用 | 距离/绳长/关节约束必须声明 anchor、constrained body、constraint length，并输出 constraint_trace；单摆只是 smoke family。 |
 | `constraint_momentum_transfer` | 当前分支已可用 | 受约束刚体链必须按相邻 contact 顺序传递冲量，末端 receiver 响应必须由 contact 链解释；牛顿摆只是 smoke family。 |
+| `elastic_energy_launch` | 当前分支已可用 | 弹性势能释放必须声明 spring/compression/mass，输出 release event；payload 初始静止，释放后速度/能量响应必须在 stored-energy envelope 内。 |
 
 注意：如果从 `main` 使用，`ramp_sliding_friction` 需要先合并当前 ramp 分支。
 
@@ -468,6 +469,7 @@ TODO：
 | P1 | 质量比碰撞/动量传递 | `mass_ratio_momentum_transfer` | 当前分支已有 fallback/verifier；UE mass metadata/contact impulse TODO |
 | P1 | 角阻尼/自转衰减 | `angular_damping_spin_decay` | 当前分支已有 fallback/verifier；UE angular velocity / damping / inertia export TODO |
 | P1 | agent 推/抛刚体 | `agent_rigidbody_action_coupling` | 当前分支已有 fallback/verifier；UE action trace / skeletal controller / impulse export TODO |
+| P1 | 弹簧/弹射/弹性势能发射 | `elastic_energy_launch` | 当前分支已有 fallback/verifier；UE spring/release event / energy label export TODO |
 | P1 | 单摆/绳长/距离约束 | `constraint_distance_pendulum_motion` | 当前分支已有 fallback/verifier；UE PhysicsConstraint / Chaos joint trace TODO |
 | P1 | 牛顿摆/悬挂球链 | `constraint_momentum_transfer` | 当前分支已有 fallback/verifier；UE suspension constraint / contact impulse / receiver velocity TODO |
 | P1 | 弹簧弹射 | `spring_launch_motion` | TODO |

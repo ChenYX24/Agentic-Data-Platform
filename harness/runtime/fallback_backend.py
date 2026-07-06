@@ -65,6 +65,8 @@ def trajectory_for_case(case_spec: dict[str, Any]) -> list[dict[str, Any]]:
         return constraint_trajectory(case_id, case_spec)
     if capability_id == "constraint_momentum_transfer":
         return impulse_chain_trajectory(case_id, case_spec)
+    if capability_id == "elastic_energy_launch":
+        return elastic_launch_trajectory(case_id, case_spec)
     return []
 
 
@@ -706,6 +708,72 @@ def infer_chain_spacing(chain: list[str], object_specs: dict[str, dict[str, Any]
     return 0.18
 
 
+def elastic_launch_trajectory(case_id: str, case_spec: dict[str, Any]) -> list[dict[str, Any]]:
+    negative_mode = str(case_spec.get("negative_mode") or "")
+    if not negative_mode and "missing_release" in case_id:
+        negative_mode = "missing_release_event"
+    if not negative_mode and "no_launch" in case_id:
+        negative_mode = "no_launch_response"
+    if not negative_mode and "energy_gain" in case_id:
+        negative_mode = "energy_gain"
+    object_specs = {str(obj.get("id")): obj for obj in case_spec.get("objects", []) if isinstance(obj, dict)}
+    expected = dict(case_spec.get("expected_physics") or {})
+    launcher_id = str(expected.get("launcher_object_id") or next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") == "elastic_launcher"), "spring"))
+    payload_id = str(expected.get("launched_object_id") or next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") == "launched_body"), "payload"))
+    support_id = next((oid for oid, obj in object_specs.items() if str(obj.get("role") or "") in {"support", "floor", "ground"}), "floor")
+    launcher_spec = object_specs.get(launcher_id) or {"initial_position_m": [0.0, 0.0, 0.1]}
+    payload_spec = object_specs.get(payload_id) or {"initial_position_m": [0.0, 0.0, 0.22], "mass_kg": 0.5}
+    support_spec = object_specs.get(support_id) or {"initial_position_m": [0.0, 0.0, 0.0]}
+    launcher_state = state(vec3(launcher_spec.get("initial_position_m") or [0.0, 0.0, 0.1]), [0.0, 0.0, 0.0])
+    support_state = state(vec3(support_spec.get("initial_position_m") or [0.0, 0.0, 0.0]), [0.0, 0.0, 0.0])
+    p0 = vec3(payload_spec.get("initial_position_m") or [0.0, 0.0, 0.22])
+    mass = float(expected.get("payload_mass_kg") or payload_spec.get("mass_kg") or 0.5)
+    spring_constant = float(expected.get("spring_constant_n_m") or launcher_spec.get("spring_constant_n_m") or 120.0)
+    compression = float(expected.get("compression_m") or launcher_spec.get("compression_m") or 0.18)
+    angle = math.radians(float(expected.get("launch_angle_deg") or 55.0))
+    stored_energy = 0.5 * spring_constant * compression * compression
+    speed = math.sqrt(max(2.0 * stored_energy / max(mass, 1e-6), 0.0)) * 0.88
+    if negative_mode == "energy_gain":
+        speed *= 2.2
+    if negative_mode == "no_launch_response":
+        speed = 0.0
+    vx = round(speed * math.cos(angle), 4)
+    vz = round(speed * math.sin(angle), 4)
+    initial = {
+        launcher_id: launcher_state,
+        payload_id: state(p0, [0.0, 0.0, 0.0]),
+        support_id: support_state,
+    }
+    release_pos = [round(p0[0] + vx * 0.12, 4), p0[1], round(p0[2] + max(vz * 0.12, 0.0), 4)]
+    final_pos = [round(p0[0] + vx * 0.35, 4), p0[1], round(p0[2] + max(vz * 0.28 - 0.08, 0.0), 4)]
+    release_event = {
+        "event_type": "release",
+        "launcher_id": launcher_id,
+        "target_id": payload_id,
+        "frame": 1,
+        "time_s": 0.2,
+        "compression_m": round(compression, 6),
+        "spring_constant_n_m": round(spring_constant, 6),
+        "stored_energy_j": round(stored_energy, 6),
+    }
+    spring_events = [] if negative_mode == "missing_release_event" else [release_event]
+    release = {
+        launcher_id: launcher_state,
+        payload_id: state(release_pos if negative_mode != "no_launch_response" else p0, [vx, 0.0, vz]),
+        support_id: support_state,
+    }
+    final = {
+        launcher_id: launcher_state,
+        payload_id: state(final_pos if negative_mode != "no_launch_response" else p0, [round(vx * 0.55, 4), 0.0, round(max(vz * 0.25, 0.0), 4)]),
+        support_id: support_state,
+    }
+    return [
+        frame(0, 0.0, initial, contacts=[contact(payload_id, launcher_id, 0, 0.0)]),
+        frame(1, 0.2, release, spring_events=spring_events),
+        frame(2, 0.4, final),
+    ]
+
+
 def state(position: list[float], velocity: list[float], *, rotation: list[float] | None = None, angular_velocity: list[float] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"position_m": position, "velocity_m_s": velocity, "rotation_deg": rotation or [0, 0, 0]}
     if angular_velocity is not None:
@@ -740,12 +808,14 @@ def dist(a: list[float], b: list[float]) -> float:
     return math.sqrt(sum((a[idx] - b[idx]) ** 2 for idx in range(3)))
 
 
-def frame(frame_id: int, time_s: float, objects: dict[str, Any], *, contacts: list[dict[str, Any]] | None = None, actions: list[dict[str, Any]] | None = None, constraints: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def frame(frame_id: int, time_s: float, objects: dict[str, Any], *, contacts: list[dict[str, Any]] | None = None, actions: list[dict[str, Any]] | None = None, constraints: list[dict[str, Any]] | None = None, spring_events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"frame": frame_id, "time_s": time_s, "objects": objects, "contacts": contacts or []}
     if actions is not None:
         result["actions"] = actions
     if constraints is not None:
         result["constraints"] = constraints
+    if spring_events is not None:
+        result["spring_events"] = spring_events
     return result
 
 

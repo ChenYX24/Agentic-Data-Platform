@@ -26,7 +26,6 @@ PUBLIC_SOURCE_PATHS = [
     "capabilities/canonical_signal_capture.json",
     "capabilities/dataset_artifact_packaging.json",
     "capabilities/rigid_body_contact_causality.json",
-    "capabilities/billiard_causality_compiler.json",
     "capabilities/rigid_body_gravity_collision.json",
     "capabilities/sequential_contact_propagation.json",
     "capabilities/ramp_sliding_friction.json",
@@ -40,6 +39,7 @@ PUBLIC_SOURCE_PATHS = [
     "capabilities/agent_rigidbody_action_coupling.json",
     "capabilities/constraint_distance_pendulum_motion.json",
     "capabilities/constraint_momentum_transfer.json",
+    "capabilities/elastic_energy_launch.json",
     "capabilities/capability_runtime_artifact_bridge.json",
     "capabilities/asset_intent_resolution.json",
     "capabilities/asset_runtime_binding_invocation.json",
@@ -65,6 +65,7 @@ PUBLIC_SOURCE_PATHS = [
     "harness/verification/falling_verifier.py",
     "harness/verification/constraint_verifier.py",
     "harness/verification/impulse_chain_verifier.py",
+    "harness/verification/elastic_launch_verifier.py",
     "tools/run_contract.py",
     "tools/draft_builder.py",
     "tools/dataset_protocol.py",
@@ -234,10 +235,10 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         ),
     ),
     CapabilitySpec(
-        capability_id="asset_physics_binding",
-        title="Typed Asset Physics Binding",
+        capability_id="asset_intent_resolution",
+        title="Asset Intent Resolution",
         pattern_type="HOW",
-        stage_ids=("asset_resolution", "scene_spec", "physics_control", "verifier"),
+        stage_ids=("asset_intent_resolution", "asset_retrieval"),
         keywords=(
             "asset",
             "Asset",
@@ -251,31 +252,77 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
             "asset_selection",
             "asset_physics_index",
         ),
-        description="Classify assets by physical role before simulation so meshes, colliders, rigid bodies, maps, skeletal assets, and visual-only materials are handled differently.",
+        description="Classify object-level asset needs into typed intents and retrieve top-k candidates before runtime binding.",
         prompt_moves=(
             "Ask for asset needs per object role, not one global scene keyword.",
-            "Retrieve top-k candidates and let model or policy select from typed candidates.",
-            "Allow generated or proxy assets only with explicit replacement reasons.",
+            "Retrieve top-k candidates and expose candidate metadata to the agent/model.",
+            "Record selected asset or explicit proxy fallback reason per object.",
         ),
         runtime_contract=(
-            "Physics-critical assets must bind collider, rigid body, mass, and collision graph entries.",
-            "Visual-only assets may vary without changing physics.",
-            "Skeletal and logic assets must declare whether they affect trajectory.",
+            "Each object intent records object_id, role, query, category, and required properties.",
+            "Physics-critical intents require collider, mass, rigid_body, and collision_profile metadata.",
+            "Unresolved intents write fallback_reason instead of disappearing.",
         ),
         verifier_checks=(
-            "Physics-critical assets appear in physics_control and trajectory/contact events.",
-            "Visual-only assets are excluded from physics graph.",
-            "Missing collider, wrong mass, wrong constraint, and missing binding are counted separately.",
+            "Physics-critical intents are counted separately from visual-only intents.",
+            "Top-k candidates and selected_asset/proxy fallback are present.",
+            "Visual-only intents do not enter the physics graph.",
         ),
         failure_modes=(
-            "A pretty static mesh is used as if it had stable collision.",
-            "A visual-only material silently changes physics semantics.",
-            "Asset retrieval returns many candidates but no spawnable physics-critical option.",
+            "Asset retrieval returns many visual candidates but no physics-critical option.",
+            "The agent treats a texture/material as a collider-bearing object.",
+            "Missing asset fallback is not recorded and runtime binding becomes ambiguous.",
         ),
         iteration_moves=(
-            "Rebuild asset_physics_index.json after changing asset sources.",
-            "Audit asset_candidates.json and asset_selection.json before runtime.",
-            "Add role profiles for repeated physical object families.",
+            "Rebuild asset registry or physics index after changing asset sources.",
+            "Audit top-k candidates before runtime binding.",
+            "Add role-specific tags for repeated physical object families.",
+        ),
+    ),
+    CapabilitySpec(
+        capability_id="asset_runtime_binding_invocation",
+        title="Asset Runtime Binding Invocation",
+        pattern_type="HOW",
+        stage_ids=("asset_runtime_binding", "runtime_actor_binding", "preflight_validation"),
+        keywords=(
+            "runtime actor",
+            "runtime_binding",
+            "selected_asset",
+            "fallback_reason",
+            "ue_path",
+            "collider",
+            "mass",
+            "collision_profile",
+            "asset registry",
+            "analytic proxy",
+            "绑定",
+            "资产调用",
+        ),
+        description="Bind selected real assets or analytic proxies into runtime actors while preserving collider, mass, material, and collision-profile metadata.",
+        prompt_moves=(
+            "Treat asset binding as an invocation contract, not as UI asset search.",
+            "Require a selected asset or explicit proxy reason for every physics-critical object.",
+            "Keep object ids stable from asset resolution into runtime actor bindings.",
+        ),
+        runtime_contract=(
+            "runtime_actor_bindings reference known case object ids and selected asset ids.",
+            "Physics-critical bindings include collider, mass/material, collision profile, and UE package path or analytic proxy.",
+            "Proxy use is marked so dataset packaging can distinguish real asset runs from analytic smoke runs.",
+        ),
+        verifier_checks=(
+            "Every physics-critical object has a binding or explicit hard failure.",
+            "Collider/mass/material/collision_profile fields are present where required.",
+            "Runtime actor ids can be matched back to case_spec objects.",
+        ),
+        failure_modes=(
+            "Selected asset exists visually but has no usable collider metadata.",
+            "Proxy fallback is silently used in a production run.",
+            "Runtime actor names drift from case object ids.",
+        ),
+        iteration_moves=(
+            "Fix asset registry metadata before changing physics verifier thresholds.",
+            "Use analytic proxy only for smoke/debug and mark proxy=true.",
+            "Add binding audit output for missing collider, wrong mass, wrong constraint, and missing binding.",
         ),
     ),
     CapabilitySpec(
@@ -779,6 +826,54 @@ CAPABILITY_SPECS: tuple[CapabilitySpec, ...] = (
         ),
     ),
     CapabilitySpec(
+        capability_id="elastic_energy_launch",
+        title="Elastic Energy Launch",
+        pattern_type="physics_constraint",
+        stage_ids=("case_spec_compilation", "physics_control", "runtime_artifact_collection", "physics_verification"),
+        keywords=(
+            "spring launch",
+            "spring launcher",
+            "compressed spring",
+            "elastic launch",
+            "elastic energy",
+            "catapult",
+            "spring_events",
+            "stored_energy",
+            "弹簧",
+            "弹簧发射",
+            "压缩弹簧",
+            "弹射",
+            "弹性势能",
+        ),
+        description="Validate stored elastic energy release into launched rigid-body motion using explicit release events, spring parameters, payload mass, and bounded kinetic-energy response.",
+        prompt_moves=(
+            "Represent the launcher as an elastic energy source with spring_constant, compression, and release event.",
+            "Keep the payload still before release and allow motion only after spring_events evidence.",
+            "Bound launch speed and height/forward displacement by stored energy and payload mass.",
+        ),
+        runtime_contract=(
+            "Trajectory includes launcher and payload states with stable ids.",
+            "spring_events.json records release frame/time, launcher_id, target_id, compression, and spring_constant.",
+            "Runtime exports post-release payload velocity and enough position samples for height/forward displacement checks.",
+        ),
+        verifier_checks=(
+            "Payload starts still before release.",
+            "Release event exists and references known launcher/payload ids.",
+            "Payload moves after release above the minimum speed threshold.",
+            "Kinetic energy after release does not exceed the stored elastic energy envelope.",
+        ),
+        failure_modes=(
+            "Payload is keyframed without a spring release event.",
+            "Payload does not respond after release.",
+            "Post-release speed implies unexplained energy gain.",
+        ),
+        iteration_moves=(
+            "Fix spring_constant, compression, payload mass, and release event before tuning camera.",
+            "Inspect spring_events.json and trajectory frames around release.",
+            "Add negative cases for missing release, no launch response, and energy gain.",
+        ),
+    ),
+    CapabilitySpec(
         capability_id="dataset_artifact_packaging",
         title="Verified Multi-View Dataset Packaging",
         pattern_type="FLOW",
@@ -939,6 +1034,7 @@ def extract_capability_profile(
         build_capability(spec, source_lines, max_evidence_per_capability=max_evidence_per_capability)
         for spec in CAPABILITY_SPECS
     ]
+    capabilities.extend(build_contract_capabilities(root, existing_ids={str(item["id"]) for item in capabilities}))
     if not include_private_sources:
         capabilities = [sanitize_private_evidence(capability) for capability in capabilities]
     return {
@@ -960,6 +1056,51 @@ def extract_capability_profile(
         "contact_causality_reference_workflow": contact_causality_reference_workflow(),
         "iteration_playbook": iteration_playbook(source_preset),
     }
+
+
+def build_contract_capabilities(root: Path, *, existing_ids: set[str]) -> list[dict[str, Any]]:
+    """Add machine-readable capability contracts not covered by hand-written extraction specs."""
+    results: list[dict[str, Any]] = []
+    for path in sorted((root / "capabilities").glob("*.json")):
+        try:
+            contract = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        capability_id = str(contract.get("id") or "")
+        if not capability_id or capability_id in existing_ids:
+            continue
+        if str(contract.get("capability_type") or "") == "compatibility_alias":
+            continue
+        verifier_checks = [str(item) for item in contract.get("verifier_rules") or []]
+        repair_suggestions = [str(item) for item in contract.get("repair_suggestions") or []]
+        results.append(
+            {
+                "id": capability_id,
+                "title": title_from_capability_id(capability_id),
+                "pattern_type": str(contract.get("capability_type") or "physics_constraint"),
+                "stage_ids": [str(item) for item in contract.get("stage_ids") or []],
+                "description": str(contract.get("description") or ""),
+                "confidence": 0.75,
+                "evidence_count": 1,
+                "evidence": [
+                    {
+                        "source": str(path.relative_to(root)),
+                        "matched_terms": [capability_id],
+                        "text": truncate(str(contract.get("description") or ""), 220),
+                    }
+                ],
+                "prompt_moves": repair_suggestions[:3] or ["Use this capability contract through the staged harness pipeline."],
+                "runtime_contract": [str(item) for item in contract.get("physical_assumptions") or []],
+                "verifier_checks": verifier_checks,
+                "failure_modes": [str(item) for item in contract.get("failure_taxonomy") or []],
+                "iteration_moves": repair_suggestions[:3] or ["Run smoke/regression cases and inspect verifier evidence before changing runtime code."],
+            }
+        )
+    return results
+
+
+def title_from_capability_id(capability_id: str) -> str:
+    return " ".join(part.capitalize() for part in capability_id.split("_"))
 
 
 def load_source_lines(root: Path, paths: Iterable[str]) -> list[dict[str, Any]]:
@@ -1132,7 +1273,21 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
     ]
     for method in profile["source_policy"]["extraction_methods"]:
         lines.append(f"- {method}")
-    lines.extend(["", "## Capability Summary", ""])
+    lines.extend(
+        [
+            "",
+            "## 能力抽象原则",
+            "",
+            "- capability id 必须命名可复用的不变量或 pipeline 阶段，不能命名成某个单独场景模板。",
+            "- `billiard_causality_compiler` 不进入 public profile；旧 JSON 只作为 legacy artifact alias 保留。",
+            "- 台球、保龄球、箱体撞击等都属于 `rigid_body_contact_causality` 的 case family。",
+            "- 资产能力拆成 `asset_intent_resolution` 和 `asset_runtime_binding_invocation`：先检索/筛选，再绑定 runtime actor。",
+            "- 物理能力必须绑定 verifier invariant、required signals、failure taxonomy 和 repair suggestions。",
+            "",
+            "## Capability Summary",
+            "",
+        ]
+    )
     for capability in profile["capabilities"]:
         lines.append(f"### {capability['title']}")
         lines.append("")
@@ -1166,6 +1321,7 @@ def render_markdown_report(profile: dict[str, Any]) -> str:
     lines.append("| Spin decay | `angular_damping_spin_decay` | Angular velocity and damping are explicit, and angular speed decays without unexplained gain |")
     lines.append("| Distance constraint / pendulum | `constraint_distance_pendulum_motion` | Anchor-body length stays within tolerance, motion is continuous, and constraint trace is exported |")
     lines.append("| Constrained impulse chain | `constraint_momentum_transfer` | Adjacent contacts are ordered, passive chain members start still, and terminal receiver motion is contact-driven |")
+    lines.append("| Elastic energy launch | `elastic_energy_launch` | Release event exists, payload starts still, and post-release kinetic response stays within stored-energy bounds |")
     lines.extend(["", "## Iteration Playbook", ""])
     for phase in profile["iteration_playbook"]:
         lines.append(f"- **{phase['phase']}**: {phase['rule']}")

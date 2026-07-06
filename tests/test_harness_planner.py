@@ -24,6 +24,7 @@ class HarnessPlannerTests(unittest.TestCase):
         self.assertEqual(planner.plan("a robot pushes a box and the box moves only after the action trace")["primary_capability_id"], "agent_rigidbody_action_coupling")
         self.assertEqual(planner.plan("a pendulum keeps a fixed length distance constraint while swinging")["primary_capability_id"], "constraint_distance_pendulum_motion")
         self.assertEqual(planner.plan("a Newton's cradle transfers impulse through a suspended ball chain")["primary_capability_id"], "constraint_momentum_transfer")
+        self.assertEqual(planner.plan("a compressed spring launches a payload through elastic energy release")["primary_capability_id"], "elastic_energy_launch")
 
     def test_planner_returns_layered_harness_capabilities(self) -> None:
         plan = CapabilityPlanner().plan("a bowling ball hits passive pins through contact")
@@ -38,6 +39,11 @@ class HarnessPlannerTests(unittest.TestCase):
         self.assertIn("rigid_body_contact_causality", constraint_ids)
         self.assertIn("physics_property_constraint_validation", constraint_ids)
         self.assertNotEqual(plan["primary_capability_id"], "billiard_causality_compiler")
+
+    def test_legacy_billiard_alias_is_not_agent_facing(self) -> None:
+        plan = CapabilityPlanner().plan("台球白球撞击目标球")
+        self.assertEqual(plan["primary_capability_id"], "rigid_body_contact_causality")
+        self.assertNotIn("billiard_causality_compiler", plan["supporting_capabilities"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,63 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "elastic_energy_launch",
+  "capability_type": "physics_constraint",
+  "stage_ids": [
+    "case_spec_compilation",
+    "physics_control",
+    "runtime_artifact_collection",
+    "physics_verification"
+  ],
+  "description": "Validate elastic stored-energy release into rigid-body launch motion using spring/compression labels, release events, trajectory response, and energy envelope checks. Spring launch is only the smoke family.",
+  "physical_assumptions": [
+    "An elastic launcher stores energy through a structured spring constant and compression label.",
+    "The launched body starts still before the release event.",
+    "The release event is explicit and references launcher and target ids.",
+    "Post-release motion must show launch speed and displacement consistent with the stored energy envelope.",
+    "Kinetic energy must not exceed the declared stored-energy bound unless another force source is declared."
+  ],
+  "required_signals": [
+    "trajectory",
+    "spring_events",
+    "energy_labels",
+    "object_roles",
+    "post_release_velocity"
+  ],
+  "required_assets": [
+    "elastic launcher",
+    "launched rigid body",
+    "collider",
+    "support surface"
+  ],
+  "verifier_rules": [
+    "Payload mass, spring constant, and compression are positive.",
+    "Launched body initial velocity is near zero.",
+    "Release event exists and references launcher/target ids.",
+    "Post-release speed exceeds the expected minimum.",
+    "Height gain and forward displacement exceed expected minima.",
+    "Post-release kinetic energy stays within the declared energy ratio."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F3_invalid_initial_physics_state",
+    "F4_causality_violation",
+    "F5_passive_precontact_motion",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Declare expected_physics.spring_constant_n_m and compression_m.",
+    "Export a spring_events release event before checking trajectory response.",
+    "Remove hidden initial velocity from the launched body.",
+    "Use stored elastic energy to derive launch speed bounds instead of keyframing flight.",
+    "Add another force label if motion exceeds the elastic energy envelope."
+  ],
+  "smoke_cases": [
+    "cases/elastic_launch/spring_launch_forward_arc.json",
+    "cases/elastic_launch/vertical_spring_launch.json"
+  ],
+  "regression_cases": [
+    "cases/elastic_launch/negative_missing_release_event.json",
+    "cases/elastic_launch/negative_no_launch_response.json",
+    "cases/elastic_launch/negative_energy_gain.json"
+  ]
+}

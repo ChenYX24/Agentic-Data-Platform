@@ -49,6 +49,7 @@ Capability 必须包含：
 | `scene_prompt_rewrite` | `prompt_case_capability_planning` + `scene_spec_compilation` |
 | `pendulum_template` 作为主能力 | `constraint_distance_pendulum_motion`，单摆/绳索/铰链作为 case family |
 | `newton_cradle_template` 作为主能力 | `constraint_momentum_transfer`，牛顿摆/悬挂球链作为 case family |
+| `spring_launcher_template` 作为主能力 | `elastic_energy_launch`，弹簧/弹射器作为 case family |
 
 ## 验证
 

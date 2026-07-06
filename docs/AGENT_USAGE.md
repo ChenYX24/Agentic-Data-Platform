@@ -134,6 +134,10 @@ events, mass labels, `constraint_trace`, and terminal receiver velocity.
 Agent-interaction prompts should use `agent_rigidbody_action_coupling`: the
 agent action must be an explicit `action_trace`, and target rigid-body motion
 must happen after action/contact or release/impulse evidence.
+Elastic launch prompts should use `elastic_energy_launch`: spring/catapult-like
+examples are smoke families, while the reusable invariant is stored energy,
+explicit release event, still payload before release, and bounded post-release
+kinetic response.
 
 ## Generic Contact Causality Rule
 

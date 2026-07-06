@@ -105,6 +105,12 @@ CAPABILITY_RULES: tuple[CapabilityRule, ...] = (
         terms=("newton cradle", "newton's cradle", "impulse chain", "constrained impulse", "momentum chain", "chain momentum transfer", "suspended ball chain", "constraint momentum transfer", "牛顿摆", "冲量链", "动量链", "悬挂球", "受约束动量传递"),
         priority=88,
     ),
+    CapabilityRule(
+        capability_id="elastic_energy_launch",
+        case_family="elastic_energy_launch",
+        terms=("spring launch", "spring launcher", "compressed spring", "elastic launch", "elastic energy", "catapult", "弹簧", "弹簧发射", "压缩弹簧", "弹射", "弹性势能"),
+        priority=87,
+    ),
 )
 
 
@@ -168,7 +174,7 @@ class CapabilityPlanner:
                 "fallback_runtime": "SIM_PROXY",
                 "dry_run_supported": True,
                 "requires_trajectory": True,
-                "requires_contact_events": primary["capability_id"] in {"rigid_body_contact_causality", "billiard_causality_compiler", "sequential_contact_propagation", "constraint_momentum_transfer"},
+                "requires_contact_events": primary["capability_id"] in {"rigid_body_contact_causality", "sequential_contact_propagation", "constraint_momentum_transfer"},
             },
         }
 

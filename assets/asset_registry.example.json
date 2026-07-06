@@ -5,7 +5,7 @@
       "asset_id": "analytic_sphere_billiard_ball",
       "category": "physics_critical",
       "type": "static_mesh",
-      "tags": ["sphere", "ball", "billiard", "rolling_subject", "rolling_body", "friction_subject", "ramp_subject", "spinning_body", "spin_subject", "angular_damping_subject", "constrained_body", "pendulum_bob", "active_chain_driver", "constrained_chain_body", "impulse_chain_body", "newton_cradle_ball"],
+      "tags": ["sphere", "ball", "billiard", "rolling_subject", "rolling_body", "friction_subject", "ramp_subject", "spinning_body", "spin_subject", "angular_damping_subject", "constrained_body", "pendulum_bob", "active_chain_driver", "constrained_chain_body", "impulse_chain_body", "newton_cradle_ball", "launched_body", "elastic_payload", "spring_payload"],
       "ue_path": "/Engine/BasicShapes/Sphere.Sphere",
       "collider": "sphere",
       "radius_m": 0.09,
@@ -16,6 +16,22 @@
         "restitution": 0.86
       },
       "collision_profile": "PhysicsActor",
+      "proxy": true
+    },
+    {
+      "asset_id": "analytic_elastic_launcher",
+      "category": "physics_critical",
+      "type": "analytic_actor",
+      "tags": ["elastic_launcher", "spring_launcher", "spring_proxy", "elastic_energy", "launcher", "catapult"],
+      "ue_path": "/Script/Engine.Actor",
+      "collider": "box",
+      "mass_kg": 0.0,
+      "material": {
+        "static_friction": 0.0,
+        "dynamic_friction": 0.0,
+        "restitution": 0.0
+      },
+      "collision_profile": "NoCollision",
       "proxy": true
     },
     {

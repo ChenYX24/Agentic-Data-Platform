@@ -1,0 +1,34 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_energy_gain",
+  "capability_id": "elastic_energy_launch",
+  "prompt": "A payload launches with far more kinetic energy than the declared spring compression can provide.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "launcher_object_id": "spring",
+    "launched_object_id": "payload",
+    "spring_constant_n_m": 120.0,
+    "compression_m": 0.18,
+    "payload_mass_kg": 0.5,
+    "release_frame": 1,
+    "release_time_s": 0.2,
+    "launch_angle_deg": 55.0,
+    "expected_min_launch_speed_m_s": 1.1,
+    "expected_max_energy_ratio": 1.25,
+    "expected_min_height_gain_m": 0.18,
+    "expected_min_forward_displacement_m": 0.18
+  },
+  "objects": [
+    {"id": "spring", "role": "elastic_launcher", "shape": "spring_proxy", "spring_constant_n_m": 120.0, "compression_m": 0.18, "initial_position_m": [0.0, 0.0, 0.1], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "payload", "role": "launched_body", "shape": "sphere", "radius_m": 0.12, "mass_kg": 0.5, "initial_position_m": [0.0, 0.0, 0.22], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "floor", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["spring"],
+  "passive_objects": ["payload"],
+  "required_assets": ["elastic launcher", "launched rigid body", "support"],
+  "required_signals": ["trajectory", "spring_events", "energy_labels"],
+  "verifier_expectation": {"status": "fail", "failure_type": "F4_causality_violation"},
+  "should_pass": false,
+  "negative_mode": "energy_gain",
+  "notes": "Regression: undeclared energy gain must fail."
+}

@@ -16,12 +16,17 @@ from harness.core.capability import CapabilityStore
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="List physics-aware harness capabilities.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument("--include-deprecated", action="store_true", help="Include compatibility aliases and deprecated capabilities.")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    capabilities = [capability.to_summary() for capability in CapabilityStore().list()]
+    capabilities = [
+        capability.to_summary()
+        for capability in CapabilityStore().list()
+        if args.include_deprecated or capability.capability_type != "compatibility_alias"
+    ]
     if args.json:
         print(json.dumps({"schema_version": "harness_capability_list_v1", "capabilities": capabilities}, indent=2, ensure_ascii=False))
     else:
