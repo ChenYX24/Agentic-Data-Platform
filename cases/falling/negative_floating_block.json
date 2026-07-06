@@ -1,0 +1,21 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_floating_block",
+  "capability_id": "rigid_body_gravity_collision",
+  "prompt": "Negative falling case: block floats without descending or contacting the floor.",
+  "expected_physics": {
+    "expected_failure": "F4_causality_violation",
+    "coordinate_system": "z_up"
+  },
+  "objects": [
+    {"id": "falling_block", "role": "falling_body", "initial_position_m": [0.0, 0.0, 1.2]},
+    {"id": "floor", "role": "support", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": [],
+  "passive_objects": ["falling_block"],
+  "required_assets": ["box rigid body", "floor collider"],
+  "required_signals": ["trajectory", "contact_events", "gravity_label"],
+  "verifier_expectation": {"status": "fail", "failure_type": "F4_causality_violation"},
+  "should_pass": false,
+  "notes": "Regression fixture for no-gravity/floating behavior."
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "rigid_body_gravity_collision",
+  "description": "Compile falling block/object prompts into gravity-driven rigid-body trajectories with support contact evidence.",
+  "physical_assumptions": [
+    "Falling bodies have gravity and collision enabled.",
+    "The vertical coordinate is z-up in harness fallback artifacts.",
+    "A falling body should descend before support contact.",
+    "Objects should not float, teleport, or penetrate far below the support surface."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "gravity_label",
+    "support_contact"
+  ],
+  "required_assets": [
+    "rigid body",
+    "collider",
+    "support floor"
+  ],
+  "verifier_rules": [
+    "Falling object z decreases over time.",
+    "Support/floor contact exists.",
+    "No unsupported floating after gravity should act.",
+    "No excessive floor penetration."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Enable gravity and collision on falling bodies.",
+    "Add support floor collider.",
+    "Capture contact events.",
+    "Check coordinate system and initial height."
+  ],
+  "smoke_cases": [
+    "cases/falling/falling_block_on_floor.json",
+    "cases/falling/stacked_blocks_contact.json"
+  ],
+  "regression_cases": [
+    "cases/falling/negative_floating_block.json"
+  ]
+}

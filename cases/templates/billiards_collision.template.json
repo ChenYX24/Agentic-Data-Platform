@@ -1,0 +1,37 @@
+{
+  "schema_version": "harness_case_template_v1",
+  "template_id": "billiards_collision",
+  "capability_id": "billiard_causality_compiler",
+  "description": "Parameterized rigid-body billiards-style collision. Passive balls must remain still until contact.",
+  "fallback_supported": true,
+  "parameter_ranges": {
+    "target_ball_count": {"type": "int", "min": 1, "max": 6},
+    "cue_speed_m_s": {"type": "float", "min": 0.6, "max": 1.8},
+    "ball_radius_m": {"type": "float", "min": 0.08, "max": 0.1},
+    "mass_kg": {"type": "float", "min": 0.15, "max": 0.19},
+    "restitution": {"type": "float", "min": 0.78, "max": 0.9},
+    "target_gap_m": {"type": "float", "min": 0.01, "max": 0.05}
+  },
+  "object_count_ranges": {
+    "active_striker": {"min": 1, "max": 1},
+    "passive_target": {"min": 1, "max": 6}
+  },
+  "physics_critical_assets": ["sphere collider", "low friction table collider"],
+  "visual_only_assets": ["ball materials", "table felt material"],
+  "camera_policy": {
+    "default": "top_down_fixed",
+    "allowed": ["top_down_fixed", "side_static", "tracking_subject"]
+  },
+  "perturbation_policy": {
+    "positive_ratio": 0.7,
+    "vary": ["target_ball_count", "cue_speed_m_s", "target_gap_m"],
+    "lock": ["passive_initial_velocity_zero", "camera_policy", "seed"]
+  },
+  "expected_invariants": [
+    "no_passive_object_moves_before_contact",
+    "collision_response_occurs_after_contact",
+    "expected_collision_graph_edges_have_contact_events"
+  ],
+  "negative_modes": ["precontact_motion", "initial_overlap", "missing_contact"],
+  "seed_policy": {"deterministic": true, "record_parameter_sample": true}
+}

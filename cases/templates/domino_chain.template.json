@@ -1,0 +1,34 @@
+{
+  "schema_version": "harness_case_template_v1",
+  "template_id": "domino_chain",
+  "capability_id": "sequential_contact_propagation",
+  "description": "Parameterized domino/chain-reaction case. Passive dominoes must activate after predecessor contact.",
+  "fallback_supported": true,
+  "parameter_ranges": {
+    "domino_count": {"type": "int", "min": 4, "max": 8},
+    "spacing_m": {"type": "float", "min": 0.16, "max": 0.24},
+    "trigger_rotation_deg": {"type": "float", "min": 16.0, "max": 30.0},
+    "domino_height_m": {"type": "float", "min": 0.28, "max": 0.42}
+  },
+  "object_count_ranges": {
+    "domino": {"min": 4, "max": 8}
+  },
+  "physics_critical_assets": ["domino rigid body", "support floor collider"],
+  "visual_only_assets": ["domino material"],
+  "camera_policy": {
+    "default": "side_static",
+    "allowed": ["side_static", "top_down_fixed", "event_closeup"]
+  },
+  "perturbation_policy": {
+    "positive_ratio": 0.7,
+    "vary": ["domino_count", "spacing_m", "trigger_rotation_deg"],
+    "lock": ["ordered_chain", "camera_policy", "seed"]
+  },
+  "expected_invariants": [
+    "contact_order_matches_causal_chain",
+    "no_passive_domino_activates_without_predecessor_contact",
+    "no_simultaneous_unexplained_passive_activation"
+  ],
+  "negative_modes": ["simultaneous_motion", "missing_contact"],
+  "seed_policy": {"deterministic": true, "record_parameter_sample": true}
+}

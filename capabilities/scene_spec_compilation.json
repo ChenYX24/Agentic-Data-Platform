@@ -1,0 +1,39 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "scene_spec_compilation",
+  "description": "Compile capability, case spec, and assets into an executable scene spec with object roles, initial states, collision graph, camera, render requirements, and required signals.",
+  "physical_assumptions": [
+    "Scene spec is an executable contract, not a prose prompt.",
+    "Active/passive object roles must survive runtime and verifier artifacts.",
+    "Initial velocity belongs in structured fields.",
+    "Camera/render requirements are evidence requirements."
+  ],
+  "required_signals": [
+    "case_spec",
+    "asset_resolution",
+    "scene_spec",
+    "required_runtime_signals"
+  ],
+  "required_assets": [
+    "selected assets or analytic proxies"
+  ],
+  "verifier_rules": [
+    "Scene object ids match case spec.",
+    "Collision graph references known objects.",
+    "Required runtime signals are explicit.",
+    "Camera/render requirements are not hidden in prose."
+  ],
+  "failure_taxonomy": [
+    "F1_scene_parsing_failure",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Add missing object roles and stable ids.",
+    "Move initial velocities from prompt prose into structured fields.",
+    "Record camera and signal requirements in scene spec."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json"
+  ],
+  "regression_cases": []
+}

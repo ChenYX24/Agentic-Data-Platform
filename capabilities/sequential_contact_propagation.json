@@ -1,0 +1,46 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "sequential_contact_propagation",
+  "description": "Compile domino or chain-reaction prompts into ordered contact propagation where only the first object is actively triggered.",
+  "physical_assumptions": [
+    "The first chain object may receive active motion.",
+    "Later objects start passive.",
+    "Activation of each later object should follow predecessor contact.",
+    "Simultaneous unexplained passive activation is invalid."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "rotation",
+    "object_order"
+  ],
+  "required_assets": [
+    "rigid body domino",
+    "collider",
+    "support surface"
+  ],
+  "verifier_rules": [
+    "Each passive domino activation frame is known.",
+    "Each activation is after predecessor contact.",
+    "No passive domino activates without an incoming contact edge.",
+    "First broken edge is reported when sequence fails."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F4_causality_violation",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Clear passive domino initial angular velocity.",
+    "Tune spacing and collider dimensions.",
+    "Ensure adjacent contact events are captured.",
+    "Avoid keyframed simultaneous rotations."
+  ],
+  "smoke_cases": [
+    "cases/domino/five_domino_chain.json"
+  ],
+  "regression_cases": [
+    "cases/domino/negative_simultaneous_motion.json"
+  ]
+}

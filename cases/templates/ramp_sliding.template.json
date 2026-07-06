@@ -1,0 +1,28 @@
+{
+  "schema_version": "harness_case_template_v1",
+  "template_id": "ramp_sliding",
+  "capability_id": "ramp_sliding_friction",
+  "description": "Contract-only template for a body rolling or sliding down a ramp. Runtime/verifier support is not implemented yet.",
+  "fallback_supported": false,
+  "parameter_ranges": {
+    "slope_angle_deg": {"type": "float", "min": 8.0, "max": 35.0},
+    "friction_dynamic": {"type": "float", "min": 0.05, "max": 0.65},
+    "subject_mass_kg": {"type": "float", "min": 0.2, "max": 5.0}
+  },
+  "object_count_ranges": {
+    "rolling_subject": {"min": 1, "max": 1},
+    "slope_surface": {"min": 1, "max": 1}
+  },
+  "physics_critical_assets": ["rolling/sliding rigid body", "ramp collider"],
+  "visual_only_assets": ["ramp material"],
+  "camera_policy": {"default": "side_static", "allowed": ["side_static", "tracking_subject"]},
+  "perturbation_policy": {"positive_ratio": 1.0, "vary": ["slope_angle_deg", "friction_dynamic"], "lock": ["seed"]},
+  "expected_invariants": [
+    "downhill_displacement_positive",
+    "friction_changes_travel_distance",
+    "rotation_translation_coupled_if_rolling"
+  ],
+  "negative_modes": ["uphill_without_force", "no_friction_sensitivity"],
+  "seed_policy": {"deterministic": true, "record_parameter_sample": true},
+  "expected_artifact_contract": ["trajectory", "contact_events", "ramp_angle_label", "material_friction_label"]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "angled_grazing_contact",
+  "capability_id": "billiard_causality_compiler",
+  "prompt": "Cue ball approaches at a shallow angle and grazes the first passive target ball. Passive targets must not move before contact.",
+  "task_type": "billiards_collision",
+  "scene": {"layout": "flat_table_offset_targets", "duration_s": 3.0, "coordinate_system": "z_up"},
+  "initial_state": {"active_striker": "cue_ball", "passive_targets_stationary_until_contact": true},
+  "physical_parameters": {"ball_radius_m": 0.09, "ball_mass_kg": 0.17, "restitution": 0.84, "table_dynamic_friction": 0.04, "cue_speed_m_s": 1.35},
+  "expected_physics": {
+    "speed": "medium",
+    "collision_graph": [["cue_ball", "target_ball_1"], ["target_ball_1", "target_ball_2"]],
+    "expected_spread": "small_lateral",
+    "camera": {"mode": "top_down_and_side"}
+  },
+  "objects": [
+    {"id": "cue_ball", "role": "active_striker", "shape": "sphere", "radius_m": 0.09, "mass_kg": 0.17, "initial_position_m": [-1.6, -0.18, 0.09], "initial_velocity_m_s": [1.35, 0.12, 0.0]},
+    {"id": "target_ball_1", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "mass_kg": 0.17, "initial_position_m": [0.0, 0.0, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_2", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "mass_kg": 0.17, "initial_position_m": [0.2, 0.08, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "table", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["cue_ball"],
+  "passive_objects": ["target_ball_1", "target_ball_2"],
+  "required_assets": ["sphere collider", "low friction table collider"],
+  "required_signals": ["trajectory", "contact_events", "camera_trajectory"],
+  "asset_requirements": {"physics_critical": ["ball colliders", "table collider"], "visual_only": ["ball colors"]},
+  "allowed_proxy_policy": "analytic_proxy_allowed_when_asset_missing",
+  "verification_rules": ["passive_initial_velocity_zero", "no_precontact_passive_motion"],
+  "verifier_expectation": {"status": "pass"},
+  "negative_or_boundary": true,
+  "should_pass": true,
+  "notes": "Boundary case: lateral cue velocity is allowed only on the active striker."
+}

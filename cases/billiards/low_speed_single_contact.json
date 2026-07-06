@@ -1,0 +1,23 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "low_speed_single_contact",
+  "capability_id": "billiard_causality_compiler",
+  "prompt": "A low-speed cue ball hits one passive target ball on a flat low-friction table.",
+  "expected_physics": {
+    "speed": "low",
+    "collision_graph": [["cue_ball", "target_ball_1"]],
+    "camera": {"mode": "top_down_fixed"}
+  },
+  "objects": [
+    {"id": "cue_ball", "role": "active_striker", "shape": "sphere", "radius_m": 0.09, "mass_kg": 0.17, "initial_position_m": [-1.0, 0.0, 0.09], "initial_velocity_m_s": [1.0, 0.0, 0.0]},
+    {"id": "target_ball_1", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "mass_kg": 0.17, "initial_position_m": [0.0, 0.0, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "table", "role": "support", "shape": "box", "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["cue_ball"],
+  "passive_objects": ["target_ball_1"],
+  "required_assets": ["sphere collider", "low friction table"],
+  "required_signals": ["trajectory", "contact_events", "camera_trajectory"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Passive target must stay still until cue_ball contact."
+}

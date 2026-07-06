@@ -1,0 +1,40 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "capability_runtime_artifact_bridge",
+  "description": "Convert existing UE or fallback runtime artifacts into the unified harness execution/verifier schema.",
+  "physical_assumptions": [
+    "Runtime artifacts are evidence, not planner instructions.",
+    "UE, fallback, and SIM_PROXY source types must remain labeled.",
+    "Video existence is not sufficient without trajectory/contact evidence."
+  ],
+  "required_signals": [
+    "spec.json",
+    "trajectory.json",
+    "summary.json",
+    "run_readiness.json",
+    "render_pass_manifest.json"
+  ],
+  "required_assets": [
+    "runtime output directory"
+  ],
+  "verifier_rules": [
+    "Normalize position, velocity, rotation, and contact events.",
+    "Preserve run id and output directory.",
+    "Run capability verifier after normalization.",
+    "Write machine-readable and human-readable diagnosis artifacts."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Capture missing runtime sidecars.",
+    "Do not merge UE and fallback without source labels.",
+    "Inspect capability_diagnosis.md before replanning."
+  ],
+  "smoke_cases": [],
+  "regression_cases": [
+    "local reference: draft_1782674415850_575607 should fail F4 if artifacts are present"
+  ]
+}

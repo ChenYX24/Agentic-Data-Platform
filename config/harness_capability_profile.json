@@ -1,0 +1,1543 @@
+{
+  "billiard_reference_workflow": [
+    {
+      "contract": "Create one active cue/driver body and a passive target rack with stable ids.",
+      "name": "Compile object graph",
+      "step": 1
+    },
+    {
+      "contract": "Use sphere or sphere-like colliders with explicit radius/diameter semantics and no t=0 overlap.",
+      "name": "Bind physical assets",
+      "step": 2
+    },
+    {
+      "contract": "Driver velocity or impulse encodes requested speed; target initial velocities are zero.",
+      "name": "Set physics controls",
+      "step": 3
+    },
+    {
+      "contract": "Runtime, not the LLM, produces target motion through contact events.",
+      "name": "Execute runtime",
+      "step": 4
+    },
+    {
+      "contract": "Reject if passive targets move above threshold before first active contact.",
+      "name": "Verify causality",
+      "step": 5
+    },
+    {
+      "contract": "Tune speed, restitution, friction, spacing, and solver substeps only after causality passes.",
+      "name": "Iterate controls",
+      "step": 6
+    }
+  ],
+  "capabilities": [
+    {
+      "confidence": 0.95,
+      "description": "Compile natural language into explicit objects, roles, asset intents, camera needs, lighting, and runtime scene requests instead of a free-form video description.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "object graph",
+            "runtime_scene_request"
+          ],
+          "source": "README.md:188",
+          "text": "| `runtime_scene_request.json` | Normalized runtime object graph |"
+        },
+        {
+          "matched_terms": [
+            "object graph",
+            "scene_spec"
+          ],
+          "source": "README.md:207",
+          "text": "| 4. Scene Spec | Object graph, assets | `scene_spec.json`, runtime request | `tools/draft_builder.py`, `contracts/`, `configs/` | Change object layout, camera defaults, scene schema, or artifact contracts |"
+        },
+        {
+          "matched_terms": [
+            "object-level"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:153",
+          "text": "| `F1_scene_parsing_failure` | prompt or scene intent cannot form a valid object-level plan |"
+        },
+        {
+          "matched_terms": [
+            "Prompt expansion"
+          ],
+          "source": "tools/capability_verifier.py:200",
+          "text": "\"F1_scene_parsing_failure\": \"repair prompt expansion and object roles before execution\","
+        },
+        {
+          "matched_terms": [
+            "runtime_scene_request",
+            "scene_spec"
+          ],
+          "source": "tools/dataset_protocol.py:54",
+          "text": "\"current_sources\": [\"runtime_scene_request\", \"trajectory_plan\", \"scene_spec\"],"
+        },
+        {
+          "matched_terms": [
+            "runtime_scene_request",
+            "scene_spec"
+          ],
+          "source": "tools/draft_builder.py:1088",
+          "text": "\"runtime_scene_request_json\": artifact_ref(\"runtime_scene_request_json\", \"scene_spec\", run_dir / \"runtime_scene_request.json\", \"runtime_scene_request\", summary=\"draft-time runtime scene and render attempt input summary\"…"
+        },
+        {
+          "matched_terms": [
+            "runtime_scene_request",
+            "scene_spec"
+          ],
+          "source": "tools/draft_builder.py:1099",
+          "text": "\"scene_spec\": [\"scene_spec_json\", \"scene_graph_report_json\", \"physics_scene_request_json\", \"runtime_scene_request_json\", \"trajectory_plan_json\", \"draft_result_json\"],"
+        },
+        {
+          "matched_terms": [
+            "asset intent"
+          ],
+          "source": "README.md:5",
+          "text": "It is not just prompt-to-video, not just UE rendering, and not a frontend-first demo. The repository packages reusable tools for capability planning, case spec compilation, asset intent resolution, UE/fallback runtime e…"
+        }
+      ],
+      "evidence_count": 116,
+      "failure_modes": [
+        "Prompt remains visual-only and cannot drive physics.",
+        "Object ids drift between planner, runtime, and verifier.",
+        "A scene layout hides the physical event from all cameras."
+      ],
+      "id": "object_graph_scene_compiler",
+      "iteration_moves": [
+        "Add missing object roles to prompt expansion.",
+        "Inspect asset_requests.json and runtime_scene_request.json before rerendering.",
+        "Rerun planner with stricter object-id and role constraints."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Ask for object roles and relationships, not only visual style.",
+        "Separate active drivers, passive receivers, support surfaces, cameras, and lights.",
+        "Require object ids that can survive asset binding, runtime execution, and verifier checks."
+      ],
+      "runtime_contract": [
+        "Write object graph into spec.json, scene_spec.json, and runtime_scene_request.json.",
+        "Preserve stable object ids from planning through trajectory and contact logs."
+      ],
+      "stage_ids": [
+        "planner",
+        "scene_spec",
+        "asset_resolution"
+      ],
+      "title": "Prompt To Object-Level Scene Compiler",
+      "verifier_checks": [
+        "All physics-critical object ids appear in runtime artifacts.",
+        "Asset selections and scene graph entries can be traced back to planner intent."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Turn prompts such as a cue ball hitting a rack into a causal rigid-body program: only the driver has initial motion; target bodies move after contact evidence exists.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "contact events",
+            "passive"
+          ],
+          "source": "README.md:248",
+          "text": "| `billiard_causality_compiler` | Active striker moves first; passive targets move only after contact events |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive",
+            "target balls"
+          ],
+          "source": "tools/capability_closed_loop.py:18",
+          "text": "\"prompt\": \"Create a billiards / pool scene where one cue ball hits a compact rack of passive target balls. Targets must stay still until contact.\","
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "cue_ball",
+            "台球"
+          ],
+          "source": "tools/capability_planner.py:27",
+          "text": "terms=(\"billiard\", \"billiards\", \"pool\", \"cue ball\", \"cue_ball\", \"台球\", \"白球\", \"目标球\", \"ball collision\"),"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive",
+            "target balls"
+          ],
+          "source": "tools/draft_builder.py:81",
+          "text": "\"For billiard-like scenes, active cue/impactor bodies should get non-zero initial_velocity_m_s, passive target balls must start with [0,0,0], \""
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "passive"
+          ],
+          "source": "README.md:285",
+          "text": "| billiards causality | `billiard_causality_compiler` | active striker moves first; passive targets move only after runtime contact propagation |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive"
+          ],
+          "source": "capabilities/billiard_causality_compiler.json:4",
+          "text": "\"description\": \"Compile billiards / pool / cue-ball prompts into active-striker and passive-target rigid-body cases with contact-driven target motion.\","
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "causality",
+            "cue"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:135",
+          "text": "| billiards / pool / cue ball / ball collision | `billiard_causality_compiler` |"
+        },
+        {
+          "matched_terms": [
+            "billiard",
+            "cue",
+            "passive"
+          ],
+          "source": "tests/test_capability_closed_loop.py:40",
+          "text": "plan = self.planner.plan(\"billiards cue ball hits passive target\")"
+        }
+      ],
+      "evidence_count": 267,
+      "failure_modes": [
+        "Targets move before contact because of initial velocity leakage.",
+        "Targets move before contact because colliders overlap at t=0.",
+        "LLM scale is interpreted as radius in one stage and diameter in another.",
+        "A visually good render is accepted without trajectory causality evidence."
+      ],
+      "id": "billiard_causality_compiler",
+      "iteration_moves": [
+        "Inspect physics.json for passive initial velocities.",
+        "Inspect first trajectory frames for target speed before first active contact.",
+        "Adjust radius/extent and initial spacing before increasing speed.",
+        "Only then sweep driver speed, restitution, and friction to tune spread."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Express one active striker and a passive target group.",
+        "Let the LLM infer reasonable mass, radius, friction, and restitution, but keep passive initial velocity at zero.",
+        "Use speed wording such as slow, medium, or fast as control intent, not as a template selection."
+      ],
+      "runtime_contract": [
+        "Cue or driver body may have initial velocity or impulse.",
+        "Passive target bodies start with zero linear and angular velocity.",
+        "Collision geometry must not overlap at t=0; small spheres keep their explicit radius instead of being clamped larger.",
+        "Trajectory and contact events are the only source of post-contact target motion."
+      ],
+      "stage_ids": [
+        "planner",
+        "physics_control",
+        "runtime",
+        "verifier"
+      ],
+      "title": "Billiard-Style Causal Collision Compiler",
+      "verifier_checks": [
+        "First active contact exists between driver and target group.",
+        "Passive pre-contact speed stays below threshold.",
+        "Post-contact target displacement or spread matches requested intensity.",
+        "Contact events include the expected driver-target pair and optional secondary contacts."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Classify assets by physical role before simulation so meshes, colliders, rigid bodies, maps, skeletal assets, and visual-only materials are handled differently.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "collider",
+            "collision",
+            "physics-critical",
+            "rigid body"
+          ],
+          "source": "capabilities/asset_intent_resolution.json:6",
+          "text": "\"Physics-critical assets require collider, mass, rigid body, and collision profile.\","
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "physics-critical",
+            "skeletal",
+            "visual-only"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:278",
+          "text": "- Decide whether an asset can be used for visual-only, physics-critical, skeletal, map, or logic roles."
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "collider",
+            "physics-critical"
+          ],
+          "source": "README.md:250",
+          "text": "| `asset_physics_binding` | Assets are typed before simulation and physics-critical assets bind colliders/rigid bodies |"
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "collider",
+            "collision"
+          ],
+          "source": "tools/dataset_protocol.py:359",
+          "text": "\"required_fields\": [\"asset_key\", \"ue5_path\", \"collider\", \"material_profile\", \"collision_enabled\"],"
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset"
+          ],
+          "source": "README.md:24",
+          "text": "- Which stage failed: planning, assets, runtime physics, visual rendering, or verification?"
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "asset_selection"
+          ],
+          "source": "README.md:185",
+          "text": "| `asset_selection.json` | Selected assets and fallback reasons |"
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset"
+          ],
+          "source": "README.md:211",
+          "text": "| 8. Verification | Video and physics evidence | pass/fail readiness | `tools/case_verifier.py`, `core/verifier.py`, `tools/run_readiness.py` | Add causality, speed, spread, asset, visual, or signal-consistency checks |"
+        },
+        {
+          "matched_terms": [
+            "Asset",
+            "asset",
+            "asset_physics_index"
+          ],
+          "source": "README.md:349",
+          "text": "python3.13 scripts/build_asset_physics_index.py \\"
+        }
+      ],
+      "evidence_count": 1043,
+      "failure_modes": [
+        "A pretty static mesh is used as if it had stable collision.",
+        "A visual-only material silently changes physics semantics.",
+        "Asset retrieval returns many candidates but no spawnable physics-critical option."
+      ],
+      "id": "asset_physics_binding",
+      "iteration_moves": [
+        "Rebuild asset_physics_index.json after changing asset sources.",
+        "Audit asset_candidates.json and asset_selection.json before runtime.",
+        "Add role profiles for repeated physical object families."
+      ],
+      "pattern_type": "HOW",
+      "prompt_moves": [
+        "Ask for asset needs per object role, not one global scene keyword.",
+        "Retrieve top-k candidates and let model or policy select from typed candidates.",
+        "Allow generated or proxy assets only with explicit replacement reasons."
+      ],
+      "runtime_contract": [
+        "Physics-critical assets must bind collider, rigid body, mass, and collision graph entries.",
+        "Visual-only assets may vary without changing physics.",
+        "Skeletal and logic assets must declare whether they affect trajectory."
+      ],
+      "stage_ids": [
+        "asset_resolution",
+        "scene_spec",
+        "physics_control",
+        "verifier"
+      ],
+      "title": "Typed Asset Physics Binding",
+      "verifier_checks": [
+        "Physics-critical assets appear in physics_control and trajectory/contact events.",
+        "Visual-only assets are excluded from physics graph.",
+        "Missing collider, wrong mass, wrong constraint, and missing binding are counted separately."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Compile falling or stacking prompts into gravity-driven rigid-body traces where objects descend under gravity and collide with a support surface instead of being visually animated.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "gravity",
+            "stacking",
+            "下落",
+            "坠落",
+            "堆叠",
+            "重力"
+          ],
+          "source": "tools/capability_planner.py:33",
+          "text": "terms=(\"falling block\", \"falling blocks\", \"falling crate\", \"falling object\", \"stacking\", \"gravity\", \"下落\", \"坠落\", \"堆叠\", \"重力\", \"落到地面\"),"
+        },
+        {
+          "matched_terms": [
+            "collision enabled",
+            "falling",
+            "falling block",
+            "gravity"
+          ],
+          "source": "README.md:286",
+          "text": "| falling blocks | `rigid_body_gravity_collision` | gravity/collision enabled, z decreases, support contact exists |"
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "gravity",
+            "stacking"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:136",
+          "text": "| falling blocks / stacking / gravity | `rigid_body_gravity_collision` |"
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "gravity",
+            "ground"
+          ],
+          "source": "tests/test_capability_closed_loop.py:32",
+          "text": "plan = self.planner.plan(\"Falling blocks under gravity collide with the ground.\")"
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "gravity",
+            "ground"
+          ],
+          "source": "tools/capability_closed_loop.py:22",
+          "text": "\"prompt\": \"Create falling blocks under gravity. Rigid bodies fall and collide with the ground and each other; the motion must not be a visual-only animation.\","
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "gravity"
+          ],
+          "source": "tools/capability_verifier.py:73",
+          "text": "failures.append(failure_record(\"F3_invalid_initial_physics_state\", \"gravity must be enabled for falling blocks\"))"
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "falling_body"
+          ],
+          "source": "tools/capability_verifier.py:75",
+          "text": "failures.append(failure_record(\"F1_scene_parsing_failure\", \"falling blocks capability requires falling_body objects\"))"
+        },
+        {
+          "matched_terms": [
+            "falling",
+            "falling block",
+            "ground"
+          ],
+          "source": "tools/capability_verifier.py:156",
+          "text": "failures.append(failure_record(\"F5_weak_visual_evidence\", \"no ground/support contact event recorded for falling blocks\"))"
+        }
+      ],
+      "evidence_count": 386,
+      "failure_modes": [
+        "Object is moved downward by visual keyframes without physics evidence.",
+        "Gravity or collision is disabled on a falling body.",
+        "Trajectory lacks support contact or passes through the floor."
+      ],
+      "id": "rigid_body_gravity_collision",
+      "iteration_moves": [
+        "Fix initial height and support plane before changing material properties.",
+        "Check trajectory z-series and contact pairs.",
+        "Tune mass, restitution, damping, and solver substeps after gravity/contact validity passes."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Identify falling bodies, support surfaces, and optional stacked receivers.",
+        "Infer gravity, mass, collision shape, and collision enabled state explicitly.",
+        "Avoid visual-only downward animation as a substitute for runtime trajectory evidence."
+      ],
+      "runtime_contract": [
+        "Falling bodies start above support surfaces with gravity and collision enabled.",
+        "Runtime trajectory shows decreasing height before contact.",
+        "Contact events include ground, floor, support, or another rigid body."
+      ],
+      "stage_ids": [
+        "planner",
+        "physics_control",
+        "runtime",
+        "verifier"
+      ],
+      "title": "Rigid Body Gravity Collision",
+      "verifier_checks": [
+        "Gravity is enabled and non-zero.",
+        "Falling body collision is enabled.",
+        "Trajectory z decreases before first support contact.",
+        "Ground/support contact is recorded."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Compile domino or chain-reaction prompts into ordered contact propagation where only the first body is actively triggered and later bodies move after upstream contact.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "chain reaction",
+            "contact propagation",
+            "domino",
+            "dominoes",
+            "sequential contact",
+            "依次",
+            "多米诺",
+            "连锁反应",
+            "链式碰撞"
+          ],
+          "source": "tools/capability_planner.py:39",
+          "text": "terms=(\"domino\", \"dominoes\", \"chain reaction\", \"sequential contact\", \"contact propagation\", \"多米诺\", \"连锁反应\", \"链式碰撞\", \"依次倒下\"),"
+        },
+        {
+          "matched_terms": [
+            "chain reaction",
+            "contact propagation",
+            "domino",
+            "dominoes",
+            "sequential contact"
+          ],
+          "source": "tools/capability_closed_loop.py:26",
+          "text": "\"prompt\": \"Create a domino chain reaction. The first domino is actively triggered and the later dominoes tip only through sequential contact propagation.\","
+        },
+        {
+          "matched_terms": [
+            "contact propagation",
+            "domino",
+            "ordered"
+          ],
+          "source": "capabilities/sequential_contact_propagation.json:4",
+          "text": "\"description\": \"Compile domino or chain-reaction prompts into ordered contact propagation where only the first object is actively triggered.\","
+        },
+        {
+          "matched_terms": [
+            "domino",
+            "dominoes"
+          ],
+          "source": "harness/verification/domino_verifier.py:31",
+          "text": "return \"F4_causality_violation\", failure(\"passive_dominoes\", min(passive_activations), 0, \"simultaneous_activation_frames\", passive_activations), evidence"
+        },
+        {
+          "matched_terms": [
+            "chain reaction",
+            "domino",
+            "sequential contact"
+          ],
+          "source": "tests/test_capability_closed_loop.py:36",
+          "text": "plan = self.planner.plan(\"A domino chain reaction tips each block through sequential contact.\")"
+        },
+        {
+          "matched_terms": [
+            "domino",
+            "dominoes"
+          ],
+          "source": "tools/capability_verifier.py:86",
+          "text": "failures.append(failure_record(\"F3_invalid_initial_physics_state\", \"first domino must have an active trigger impulse or angular velocity\", evidence={\"object_id\": dominoes[0].get(\"id\")}))"
+        },
+        {
+          "matched_terms": [
+            "domino",
+            "ordered"
+          ],
+          "source": "README.md:287",
+          "text": "| domino chain | `sequential_contact_propagation` | first object is actively triggered, later objects tip through ordered adjacent contacts |"
+        },
+        {
+          "matched_terms": [
+            "bottle_domino_chain",
+            "domino"
+          ],
+          "source": "config/case_registry.yaml:492",
+          "text": "- id: bottle_domino_chain"
+        }
+      ],
+      "evidence_count": 125,
+      "failure_modes": [
+        "Later chain objects are pre-animated or pre-rotated.",
+        "Contact pairs are missing even though objects appear to fall.",
+        "Tip order is reversed or simultaneous beyond tolerance."
+      ],
+      "id": "sequential_contact_propagation",
+      "iteration_moves": [
+        "Check initial angular velocity on all non-first objects.",
+        "Inspect adjacent contact pair coverage.",
+        "Adjust spacing, mass, friction, and angular damping after sequence validity passes."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Define an ordered chain with stable ids.",
+        "Allow only the first object to receive active trigger motion.",
+        "Require later objects to remain passive until contact propagation reaches them."
+      ],
+      "runtime_contract": [
+        "First chain object may have impulse or angular velocity.",
+        "Subsequent chain objects start with zero linear and angular velocity.",
+        "Trajectory records increasing tip/motion start times and adjacent contact pairs."
+      ],
+      "stage_ids": [
+        "planner",
+        "physics_control",
+        "runtime",
+        "verifier"
+      ],
+      "title": "Sequential Contact Propagation",
+      "verifier_checks": [
+        "Non-first objects have no initial motion.",
+        "Tip or motion start times are non-decreasing along the chain.",
+        "Adjacent contact pairs are present in order."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Represent gravity, material, rigid-body, constraint, force, time, agent, and render-physics bridge controls as typed fields that can be replayed and swept.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "friction",
+            "mass",
+            "material",
+            "restitution"
+          ],
+          "source": "tools/draft_builder.py:77",
+          "text": "\"initial_velocity_m_s, mass_kg, friction, restitution, collision_shape, material, and expected_event. \""
+        },
+        {
+          "matched_terms": [
+            "material",
+            "parameter",
+            "physics_control"
+          ],
+          "source": "README.md:208",
+          "text": "| 5. Physics Control | Scene objects, prompt physics intent | `physics.json`, `physics_control` | `core/physics_control.py`, `configs/physics_schema.json`, `config/material_profiles.yaml` | Add typed parameters, default…"
+        },
+        {
+          "matched_terms": [
+            "friction",
+            "material",
+            "restitution"
+          ],
+          "source": "README.md:373",
+          "text": "| `materials[]` | static/dynamic friction, restitution, density, damping, hardness |"
+        },
+        {
+          "matched_terms": [
+            "friction",
+            "material",
+            "restitution"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:447",
+          "text": "| `materials[]` | friction, restitution, density, damping |"
+        },
+        {
+          "matched_terms": [
+            "friction",
+            "material",
+            "restitution"
+          ],
+          "source": "tools/dataset_protocol.py:469",
+          "text": "\"material_sweep\": [\"friction\", \"restitution\", \"material\", \"摩擦\", \"弹性\", \"材质\"],"
+        },
+        {
+          "matched_terms": [
+            "parameter",
+            "physics_control"
+          ],
+          "source": "README.md:251",
+          "text": "| `explicit_physics_control_surface` | Physics parameters are typed, replayable, and sweepable |"
+        },
+        {
+          "matched_terms": [
+            "gravity",
+            "rigid_body"
+          ],
+          "source": "README.md:286",
+          "text": "| falling blocks | `rigid_body_gravity_collision` | gravity/collision enabled, z decreases, support contact exists |"
+        },
+        {
+          "matched_terms": [
+            "gravity",
+            "mass"
+          ],
+          "source": "README.md:374",
+          "text": "| `rigid_bodies[]` | mass, inertia scale, initial velocity, gravity/collision flags |"
+        }
+      ],
+      "evidence_count": 777,
+      "failure_modes": [
+        "Implicit physics looks plausible once but cannot be reproduced.",
+        "LLM changes multiple physical variables during a sensitivity test.",
+        "Verifier can only check schema because trajectory evidence is absent."
+      ],
+      "id": "explicit_physics_control_surface",
+      "iteration_moves": [
+        "Run baseline, implicit, and structured-control variants.",
+        "Sweep one parameter across fixed seeds.",
+        "Compare reproduction variance and verifier pass rate."
+      ],
+      "pattern_type": "HOW",
+      "prompt_moves": [
+        "Use prompt wording to infer control intent, then write typed values with source/confidence.",
+        "Do not bury physical assumptions in natural language notes.",
+        "Lock camera, action, and initial state for parameter sensitivity tests."
+      ],
+      "runtime_contract": [
+        "physics.json and physics_control carry deterministic values.",
+        "Runtime reads controls directly rather than reinterpreting the prompt.",
+        "Matched replay changes one control at a time."
+      ],
+      "stage_ids": [
+        "planner",
+        "physics_control",
+        "benchmark"
+      ],
+      "title": "Explicit Physics Control Surface",
+      "verifier_checks": [
+        "Schema-valid physics_control is present.",
+        "Runtime echo of controls matches planner output.",
+        "Single-parameter changes produce predictable trajectory or contact changes."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Capture video and aligned evidence streams on one timebase: RGB, trajectory, contacts, camera path, depth proxy, normal proxy, audio, engine states, and semantic labels.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal",
+            "signals",
+            "trajectory"
+          ],
+          "source": "README.md:16",
+          "text": "-> Stage 7: RGB / trajectory / contacts / camera / depth / normal / audio signals"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "camera trajectory",
+            "depth",
+            "normal",
+            "trajectory"
+          ],
+          "source": "tools/dataset_protocol.py:165",
+          "text": "\"physeditworld\": \"RGB, depth, normal, audio, action trace, camera trajectory, engine states, semantics, and gravity labels are synchronized.\","
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "contact events",
+            "depth",
+            "normal",
+            "render_pass_manifest"
+          ],
+          "source": "tools/dataset_protocol.py:543",
+          "text": "\"当前 RGB 来自 UE native render；audio 可由 contact events 确定性合成；depth / normal 已作为 runtime-derived proxy pass 输出，并在 render_pass_manifest.json 中显式标记 source_type，后续接 UE GBuffer 时可替换为 native_render。\","
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal",
+            "render_pass_manifest"
+          ],
+          "source": "README.md:191",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio signal manifest |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal",
+            "trajectory"
+          ],
+          "source": "README.md:252",
+          "text": "| `canonical_signal_capture` | RGB, trajectory, contacts, camera, depth, normal, and audio share a synchronized contract |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal",
+            "render_pass_manifest"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:193",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio/camera evidence availability |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal",
+            "trajectory"
+          ],
+          "source": "tests/test_dataset_protocol.py:23",
+          "text": "for signal_id in (\"rgb\", \"depth\", \"normal\", \"audio\", \"action_trace\", \"camera_trajectory\", \"engine_states\", \"gravity_labels\", \"object_trajectory\", \"contact_events\"):"
+        },
+        {
+          "matched_terms": [
+            "contact events",
+            "normal",
+            "trajectory"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:190",
+          "text": "| `ue_output/trajectory.json` or `debug_preview/trajectory.json` | normalized object states and contact events |"
+        }
+      ],
+      "evidence_count": 712,
+      "failure_modes": [
+        "A video exists but has no trajectory or contacts.",
+        "Depth/normal proxies are mistaken for native GBuffer.",
+        "Different views cannot be compared because camera/action changed."
+      ],
+      "id": "canonical_signal_capture",
+      "iteration_moves": [
+        "Run pass quality report before dataset packaging.",
+        "Add missing view or signal manifests before rerendering a full suite.",
+        "Keep camera/action/initial_state fixed for control sensitivity runs."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Specify which evidence streams are needed for the case.",
+        "Prefer fixed multi-view cameras for comparison and moving cameras for inspection.",
+        "Treat render passes as synchronized artifacts, not UI decorations."
+      ],
+      "runtime_contract": [
+        "Write render_pass_manifest.json and camera_trajectories.json.",
+        "Align video frames, trajectory frames, contact events, and audio duration.",
+        "Mark derived proxies separately from native UE render passes."
+      ],
+      "stage_ids": [
+        "runtime",
+        "signals",
+        "dataset"
+      ],
+      "title": "Canonical Multi-Signal Capture",
+      "verifier_checks": [
+        "Frame counts and timebase are consistent.",
+        "Missing signals are classified instead of ignored.",
+        "Each camera view has expected RGB and sidecar metadata."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Use verifier output, not UI preview or successful rendering, as the final readiness decision for reference-ready samples.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "physics_ready",
+            "readiness",
+            "reference_ready",
+            "run_readiness",
+            "visual_ready"
+          ],
+          "source": "tests/test_capability_runtime_adapter.py:75",
+          "text": "write_json(output_dir / \"run_readiness.json\", {\"passed\": True, \"reference_ready\": True, \"physics_ready\": True, \"visual_ready\": True})"
+        },
+        {
+          "matched_terms": [
+            "physics_ready",
+            "readiness",
+            "reference_ready",
+            "run_readiness",
+            "visual_ready"
+          ],
+          "source": "tests/test_capability_runtime_adapter.py:134",
+          "text": "write_json(output_dir / \"run_readiness.json\", {\"passed\": True, \"reference_ready\": True, \"physics_ready\": True, \"visual_ready\": True})"
+        },
+        {
+          "matched_terms": [
+            "readiness",
+            "run_readiness",
+            "verifier"
+          ],
+          "source": "README.md:211",
+          "text": "| 8. Verification | Video and physics evidence | pass/fail readiness | `tools/case_verifier.py`, `core/verifier.py`, `tools/run_readiness.py` | Add causality, speed, spread, asset, visual, or signal-consistency checks |"
+        },
+        {
+          "matched_terms": [
+            "readiness",
+            "run_readiness",
+            "verifier"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:621",
+          "text": "python3.13 -m py_compile tools/case_verifier.py tools/run_readiness.py tools/render_quality.py"
+        },
+        {
+          "matched_terms": [
+            "readiness",
+            "reference_ready",
+            "run_readiness"
+          ],
+          "source": "tests/test_dataset_protocol.py:125",
+          "text": "(output_dir / \"run_readiness.json\").write_text(json.dumps({\"reference_ready\": True, \"case_type\": \"falling_crate_collision\"}), encoding=\"utf-8\")"
+        },
+        {
+          "matched_terms": [
+            "physics_ready",
+            "reference_ready",
+            "visual_ready"
+          ],
+          "source": "tests/test_run_contract.py:65",
+          "text": "files = write_final_contract(run_dir, output_dir, {\"reference_ready\": True, \"physics_ready\": True, \"visual_ready\": True})"
+        },
+        {
+          "matched_terms": [
+            "physics_ready",
+            "reference_ready",
+            "visual_ready"
+          ],
+          "source": "tests/test_run_contract.py:114",
+          "text": "files = write_final_contract(run_dir, output_dir, {\"reference_ready\": True, \"physics_ready\": True, \"visual_ready\": True})"
+        },
+        {
+          "matched_terms": [
+            "failed_checks",
+            "readiness"
+          ],
+          "source": "tools/run_contract.py:55",
+          "text": "\"failed_checks\": readiness.get(\"failed_checks\") or {},"
+        }
+      ],
+      "evidence_count": 251,
+      "failure_modes": [
+        "Rendered output is accepted despite failed physics evidence.",
+        "Schema passes but runtime behavior diverges.",
+        "Legacy preview is mistaken for final video."
+      ],
+      "id": "verifier_truth_gate",
+      "iteration_moves": [
+        "Use verifier failure type to decide whether to replan, rebind assets, or rerun runtime.",
+        "Promote only passing artifacts into dataset shards.",
+        "Track verifier pass rate across seeds and prompt variants."
+      ],
+      "pattern_type": "HOW",
+      "prompt_moves": [
+        "Ask for expected physical evidence when requesting a video.",
+        "Keep human visual inspection separate from machine readiness.",
+        "Treat preview filenames as legacy until verifier promotion."
+      ],
+      "runtime_contract": [
+        "Write case_verification.json and run_readiness.json for every run.",
+        "Store failed stage, failure reason, and machine-readable failed_checks.",
+        "Dataset packager filters by verifier status."
+      ],
+      "stage_ids": [
+        "verifier",
+        "dataset"
+      ],
+      "title": "Verifier As Runtime Truth Gate",
+      "verifier_checks": [
+        "Video exists and is readable.",
+        "Trajectory source and contact events are valid.",
+        "Physics, visual, asset, and signal gates all pass."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Convert existing UE or fallback run artifacts into the capability verifier trace contract so real runtime evidence can be checked with the same causality rules as deterministic dry runs.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "debug_preview",
+            "trajectory.json",
+            "ue_output"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:190",
+          "text": "| `ue_output/trajectory.json` or `debug_preview/trajectory.json` | normalized object states and contact events |"
+        },
+        {
+          "matched_terms": [
+            "trajectory.json",
+            "ue_output"
+          ],
+          "source": "README.md:189",
+          "text": "| `ue_output/trajectory.json` | Runtime trajectory |"
+        },
+        {
+          "matched_terms": [
+            "render_pass_manifest.json",
+            "ue_output"
+          ],
+          "source": "README.md:191",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio signal manifest |"
+        },
+        {
+          "matched_terms": [
+            "run_readiness.json",
+            "ue_output"
+          ],
+          "source": "README.md:193",
+          "text": "| `ue_output/run_readiness.json` | Final readiness gate |"
+        },
+        {
+          "matched_terms": [
+            "debug_preview",
+            "verify_capability_run"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:182",
+          "text": "python3.13 scripts/verify_capability_run.py runs/<run_id> --output-dir runs/<run_id>/debug_preview"
+        },
+        {
+          "matched_terms": [
+            "summary.json",
+            "ue_output"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:191",
+          "text": "| `ue_output/summary.json` | runtime source type and trajectory source |"
+        },
+        {
+          "matched_terms": [
+            "run_readiness.json",
+            "ue_output"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:192",
+          "text": "| `ue_output/run_readiness.json` | runtime/readiness status |"
+        },
+        {
+          "matched_terms": [
+            "render_pass_manifest.json",
+            "ue_output"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:193",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio/camera evidence availability |"
+        }
+      ],
+      "evidence_count": 147,
+      "failure_modes": [
+        "A native UE render exists but cannot be checked for capability causality.",
+        "Fallback and UE artifacts are mixed without source labels.",
+        "Legacy preview video is mistaken for verifier-ready physical evidence."
+      ],
+      "id": "capability_runtime_artifact_bridge",
+      "iteration_moves": [
+        "Run scripts/verify_capability_run.py on an existing run.",
+        "Inspect capability_verifier.json before changing prompt or scene parameters.",
+        "Use capability_diagnosis.md to decide whether the issue is planning, runtime, evidence, or verifier."
+      ],
+      "pattern_type": "BRIDGE",
+      "prompt_moves": [
+        "Keep prompt-to-capability matching independent from backend artifact shape.",
+        "Treat runtime output as evidence to adapt, not as a new planning schema.",
+        "Preserve the original run id and output directory in every bridge report."
+      ],
+      "runtime_contract": [
+        "Prefer ue_output over debug_preview when both exist.",
+        "Read spec.json, summary.json, trajectory.json, run_readiness.json, and render_pass_manifest.json.",
+        "Write capability_plan.json, capability_execution_trace.json, capability_verifier.json, and capability_diagnosis.md."
+      ],
+      "stage_ids": [
+        "runtime",
+        "signals",
+        "verifier"
+      ],
+      "title": "Capability Runtime Artifact Bridge",
+      "verifier_checks": [
+        "Runtime source type is classified as UE, FALLBACK, SIM_PROXY, or UNKNOWN.",
+        "Trajectory states are normalized to position_m, velocity_m_s, rotation_deg, and contacts.",
+        "Capability verifier can reject real pre-contact passive motion, not only simulated trace failures."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Evaluate real runtime trajectories across seed sweeps and variants instead of dry control signals or mixed-backend stability numbers.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "benchmark",
+            "canonical trajectory",
+            "regression"
+          ],
+          "source": "README.md:42",
+          "text": "| Benchmark engine | `benchmark_suite/` | Canonical trajectory evaluation, pipeline state machine, regression gates |"
+        },
+        {
+          "matched_terms": [
+            "benchmark",
+            "regression",
+            "seed"
+          ],
+          "source": "README.md:212",
+          "text": "| 9. Benchmark | Prompt suite and run artifacts | Metrics and regression reports | `benchmark_suite/`, `benchmark_prompts/` | Add benchmark cases, canonical metrics, gates, or seed sweeps |"
+        },
+        {
+          "matched_terms": [
+            "benchmark",
+            "seed"
+          ],
+          "source": "README.md:393",
+          "text": "python3.13 benchmark_suite/run_full_pipeline.py --seed-sweep 20 --strict --resume"
+        },
+        {
+          "matched_terms": [
+            "benchmark",
+            "regression"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:662",
+          "text": "benchmark_suite/gates/regression_gates.py"
+        },
+        {
+          "matched_terms": [
+            "benchmark",
+            "regression"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:672",
+          "text": "- Add regression checks in `benchmark_suite/gates/regression_gates.py`."
+        },
+        {
+          "matched_terms": [
+            "benchmark",
+            "seed"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:677",
+          "text": "python3.13 benchmark_suite/run_full_pipeline.py --seed-sweep 20 --strict --resume"
+        },
+        {
+          "matched_terms": [
+            "benchmark"
+          ],
+          "source": "README.md:18",
+          "text": "-> Stage 9: benchmark reports or dataset shard"
+        },
+        {
+          "matched_terms": [
+            "regression"
+          ],
+          "source": "README.md:34",
+          "text": "| Capabilities | `capabilities/` | Capability JSON contracts with assumptions, required signals, verifier rules, smoke/regression cases |"
+        }
+      ],
+      "evidence_count": 90,
+      "failure_modes": [
+        "Fallback and UE are merged into one stability metric.",
+        "Coverage is confused with runtime success.",
+        "Constraint events are overcounted."
+      ],
+      "id": "trajectory_benchmark_iteration",
+      "iteration_moves": [
+        "Run full pipeline with seed sweep.",
+        "Inspect coverage, signal purity, and stability reports.",
+        "Cluster failures before changing planner or schema."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Define scenario class and expected physical signal before running a benchmark.",
+        "Keep seed, camera, action, and initial state stable for reproduction studies.",
+        "Compare vanilla, implicit, and structured physics-control planners."
+      ],
+      "runtime_contract": [
+        "Canonicalize trajectory source type before metrics.",
+        "Split runtime, observability, and physics coverage.",
+        "Calculate stability on UE-only subset and report weighted full-trajectory stability separately."
+      ],
+      "stage_ids": [
+        "benchmark",
+        "runtime",
+        "verifier"
+      ],
+      "title": "Trajectory-Based Benchmark Iteration",
+      "verifier_checks": [
+        "Constraint violations are deduplicated.",
+        "Missing timesteps are classified as observability gaps.",
+        "Regression gate catches stability drop, constraint noise, invalid JSON, and test failures."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Package only readiness-gated runs into a dataset layout with video, synchronized signals, physics labels, asset metadata, and hashes.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "gravity labels",
+            "normal"
+          ],
+          "source": "tools/dataset_protocol.py:165",
+          "text": "\"physeditworld\": \"RGB, depth, normal, audio, action trace, camera trajectory, engine states, semantics, and gravity labels are synchronized.\","
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "README.md:16",
+          "text": "-> Stage 7: RGB / trajectory / contacts / camera / depth / normal / audio signals"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "README.md:191",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio signal manifest |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "README.md:252",
+          "text": "| `canonical_signal_capture` | RGB, trajectory, contacts, camera, depth, normal, and audio share a synchronized contract |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:193",
+          "text": "| `ue_output/render_pass_manifest.json` | RGB/depth/normal/audio/camera evidence availability |"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "tests/test_dataset_protocol.py:23",
+          "text": "for signal_id in (\"rgb\", \"depth\", \"normal\", \"audio\", \"action_trace\", \"camera_trajectory\", \"engine_states\", \"gravity_labels\", \"object_trajectory\", \"contact_events\"):"
+        },
+        {
+          "matched_terms": [
+            "RGB",
+            "audio",
+            "depth",
+            "normal"
+          ],
+          "source": "tools/dataset_protocol.py:543",
+          "text": "\"当前 RGB 来自 UE native render；audio 可由 contact events 确定性合成；depth / normal 已作为 runtime-derived proxy pass 输出，并在 render_pass_manifest.json 中显式标记 source_type，后续接 UE GBuffer 时可替换为 native_render。\","
+        },
+        {
+          "matched_terms": [
+            "dataset",
+            "package_dataset",
+            "shard"
+          ],
+          "source": "README.md:213",
+          "text": "| 10. Dataset Package | Readiness-gated runs | Dataset manifest / materialized shard | `tools/dataset_packager.py`, `scripts/package_dataset.py` | Change sample layout, filtering, hashing, or training export format |"
+        }
+      ],
+      "evidence_count": 272,
+      "failure_modes": [
+        "A debug run is silently included as training data.",
+        "Dataset docs overclaim native signal quality.",
+        "Hashing or materialization misses a required sidecar."
+      ],
+      "id": "dataset_harness_packaging",
+      "iteration_moves": [
+        "Run package_dataset.py after verifier updates.",
+        "Audit sample tiers before publishing.",
+        "Use benchmark taxonomy to grow cases systematically."
+      ],
+      "pattern_type": "FLOW",
+      "prompt_moves": [
+        "Request dataset-grade evidence explicitly when generating cases.",
+        "Use fixed view names for comparable samples.",
+        "Separate debug/evidence runs from training-ready samples."
+      ],
+      "runtime_contract": [
+        "Materialized shards contain samples/{sample_id}/videos, signals, audio, depth, and normal.",
+        "Manifest records quality tier, source paths, hashes, and signal availability.",
+        "Failed or incomplete samples stay visible but are not training-ready."
+      ],
+      "stage_ids": [
+        "dataset",
+        "signals",
+        "verifier"
+      ],
+      "title": "Verified Multi-View Dataset Packaging",
+      "verifier_checks": [
+        "Readiness gate overrides legacy status.",
+        "Signal manifest and dataset manifest agree.",
+        "Sample count and failed_or_incomplete counts are explicit."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Use structured failure evidence to decide the next minimal change: prompt expansion, asset binding, scene layout, physics controls, runtime settings, or verifier thresholds.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:78",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failed",
+            "failure"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:158",
+          "text": "| `F6_runtime_or_render_failure` | backend execution or render failed |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:266",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:328",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:390",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:464",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:518",
+          "text": "| Failure | Type | Fix |"
+        },
+        {
+          "matched_terms": [
+            "failure",
+            "fix"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:572",
+          "text": "| Failure | Type | Fix |"
+        }
+      ],
+      "evidence_count": 291,
+      "failure_modes": [
+        "Agent adds a template instead of fixing the control surface.",
+        "Multiple stages change at once and root cause becomes untraceable.",
+        "A passing single run hides instability across seeds."
+      ],
+      "id": "failure_driven_refinement_loop",
+      "iteration_moves": [
+        "Mine failure evidence from verifier and trajectory.",
+        "Change exactly one stage owner file or prompt contract.",
+        "Rerun tests and a small prompt suite before publishing."
+      ],
+      "pattern_type": "BRIDGE",
+      "prompt_moves": [
+        "Ask for outcome intent, constraints, and evidence streams, then let the harness fill details.",
+        "Do not overfit one case with hidden hardcoded parameters.",
+        "Keep each iteration's hypothesis explicit."
+      ],
+      "runtime_contract": [
+        "Every failed run writes failure type, root cause, and artifact links.",
+        "Refinement should diff the previous spec/control/runtime evidence.",
+        "One iteration should change the smallest responsible stage."
+      ],
+      "stage_ids": [
+        "planner",
+        "runtime",
+        "verifier",
+        "benchmark"
+      ],
+      "title": "Failure-Driven Replanning And Refinement",
+      "verifier_checks": [
+        "Failure mode is categorized.",
+        "Next-step plan is present.",
+        "Regression tests protect previously fixed failures such as pre-contact passive motion."
+      ]
+    },
+    {
+      "confidence": 0.95,
+      "description": "Mine repeated project memory, reports, and final artifacts into reusable harness capabilities without publishing raw private sessions or secrets.",
+      "evidence": [
+        {
+          "matched_terms": [
+            "BRIDGE",
+            "FLOW",
+            "HOW",
+            "WHAT",
+            "pattern",
+            "skill"
+          ],
+          "source": "docs/PHYSICS_AWARE_HARNESS.md:34",
+          "text": "- extracted session-skill methods: WHAT/HOW/FLOW/BRIDGE pattern mining, decision-chain re-anchoring, failure taxonomy extraction"
+        },
+        {
+          "matched_terms": [
+            "HOW",
+            "WHAT"
+          ],
+          "source": "README.md:223",
+          "text": "The repo includes a small extractor that turns project evidence into a reusable harness capability profile. This is how the billiard-style collision work is preserved without hardcoding a billiard template: the extracte…"
+        },
+        {
+          "matched_terms": [
+            "BRIDGE"
+          ],
+          "source": "README.md:314",
+          "text": "This is the bridge from generated video runs back into the physics-aware harness. If the video exists but passive objects move before runtime contact, the run fails with `F4_causality_violation`; the MP4 alone is not co…"
+        },
+        {
+          "matched_terms": [
+            "HOW"
+          ],
+          "source": "README.md:25",
+          "text": "- How does changing one physical parameter affect trajectory, contacts, and rendered evidence?"
+        },
+        {
+          "matched_terms": [
+            "HOW"
+          ],
+          "source": "README.md:46",
+          "text": "| Public docs | `docs/` | How to use and modify each harness stage |"
+        },
+        {
+          "matched_terms": [
+            "FLOW"
+          ],
+          "source": "README.md:106",
+          "text": "| `docs/AGENT_USAGE.md` | Recommended code-agent command flow |"
+        },
+        {
+          "matched_terms": [
+            "HOW"
+          ],
+          "source": "README.md:109",
+          "text": "| `docs/CAPABILITY_AUTHORING.md` | How to add a capability and regression cases |"
+        },
+        {
+          "matched_terms": [
+            "HOW"
+          ],
+          "source": "README.md:201",
+          "text": "| Stage | Input | Output | Owner Files | How To Modify |"
+        }
+      ],
+      "evidence_count": 97,
+      "failure_modes": [
+        "A report becomes a generic essay with no owner files.",
+        "Private session logs leak into the public repo.",
+        "The extracted skill overfits to the billiard case and cannot generalize."
+      ],
+      "id": "lineage_based_capability_extraction",
+      "iteration_moves": [
+        "Run local extraction from memory and reports.",
+        "Run public extraction from README, docs, tests, and code.",
+        "Diff the capability profile after new benchmark or prompt iterations."
+      ],
+      "pattern_type": "BRIDGE",
+      "prompt_moves": [
+        "Start from project memory and final artifacts, then re-anchor claims to source files.",
+        "Classify each learning as WHAT, HOW, FLOW, or BRIDGE.",
+        "Distill private session evidence into public, sanitized capability profiles."
+      ],
+      "runtime_contract": [
+        "Generated public profiles exclude raw logs, secrets, run outputs, and local-only agent docs.",
+        "Internal extraction reports may cite local memory and private reports but are not exported.",
+        "Capability profiles include modification points and validation commands."
+      ],
+      "stage_ids": [
+        "meta",
+        "docs",
+        "tests"
+      ],
+      "title": "Lineage-Based Harness Capability Extraction",
+      "verifier_checks": [
+        "Generated profile contains no keys or private archive paths.",
+        "Each capability has evidence, failure modes, and iteration moves.",
+        "Docs point users to executable owner files and tests."
+      ]
+    }
+  ],
+  "capability_count": 13,
+  "iteration_playbook": [
+    {
+      "input": "README/docs, tests, runtime code, and public config",
+      "output": "candidate capabilities with evidence cards",
+      "phase": "mine",
+      "rule": "Use WHAT/HOW/FLOW/BRIDGE extraction; do not publish raw sessions."
+    },
+    {
+      "input": "local capability candidates",
+      "output": "publishable config/harness_capability_profile.json",
+      "phase": "distill",
+      "rule": "Remove private paths, secrets, and raw logs; keep owner files and checks."
+    },
+    {
+      "input": "prompt cases and capability profile",
+      "output": "draft/run artifacts and verifier failures",
+      "phase": "exercise",
+      "rule": "Run several prompts and classify failures by stage before changing code."
+    },
+    {
+      "input": "failure clusters",
+      "output": "stage-specific prompt, asset, runtime, verifier, or benchmark patch",
+      "phase": "tighten",
+      "rule": "Change one responsible stage at a time and rerun tests."
+    }
+  ],
+  "schema_version": "physics_aware_harness_capabilities_v1",
+  "source_policy": {
+    "extraction_methods": [
+      "WHAT/HOW/FLOW/BRIDGE pattern mining",
+      "decision-chain re-anchoring",
+      "failure taxonomy extraction",
+      "capability quality checklist"
+    ],
+    "private_agent_docs_committed": false,
+    "publishable_profile_sanitized": true,
+    "raw_sessions_committed": false
+  },
+  "source_preset": "public"
+}

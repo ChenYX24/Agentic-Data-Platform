@@ -1,0 +1,36 @@
+{
+  "schema_version": "asset_registry.v1",
+  "assets": [
+    {
+      "asset_id": "analytic_sphere_billiard_ball",
+      "category": "physics_critical",
+      "type": "static_mesh",
+      "ue_path": "/Engine/BasicShapes/Sphere.Sphere",
+      "collider": "sphere",
+      "radius_m": 0.09,
+      "mass_kg": 0.17,
+      "material": {
+        "static_friction": 0.05,
+        "dynamic_friction": 0.035,
+        "restitution": 0.86
+      },
+      "collision_profile": "PhysicsActor",
+      "proxy": true
+    },
+    {
+      "asset_id": "analytic_low_friction_table",
+      "category": "physics_critical",
+      "type": "static_mesh",
+      "ue_path": "/Engine/BasicShapes/Cube.Cube",
+      "collider": "box",
+      "mass_kg": 100.0,
+      "material": {
+        "static_friction": 0.06,
+        "dynamic_friction": 0.04,
+        "restitution": 0.15
+      },
+      "collision_profile": "BlockAll",
+      "proxy": true
+    }
+  ]
+}

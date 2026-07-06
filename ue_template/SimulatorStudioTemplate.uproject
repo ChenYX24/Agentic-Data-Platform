@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.7",
+  "Category": "Simulation",
+  "Description": "Asset Database simulator studio template. Runtime scripts load materialized assets from the AgenticDataPlatform Content mount.",
+  "Plugins": [
+    {
+      "Name": "ADPPhysicsRuntime",
+      "Enabled": true
+    }
+  ]
+}

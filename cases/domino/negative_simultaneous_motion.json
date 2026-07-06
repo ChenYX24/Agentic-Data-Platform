@@ -1,0 +1,23 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_simultaneous_motion",
+  "capability_id": "sequential_contact_propagation",
+  "prompt": "Negative domino case: multiple passive dominoes start moving without contact.",
+  "expected_physics": {
+    "expected_failure": "F4_causality_violation"
+  },
+  "objects": [
+    {"id": "domino_0", "role": "domino", "initial_position_m": [0.0, 0.0, 0.2]},
+    {"id": "domino_1", "role": "domino", "initial_position_m": [0.18, 0.0, 0.2]},
+    {"id": "domino_2", "role": "domino", "initial_position_m": [0.36, 0.0, 0.2]},
+    {"id": "domino_3", "role": "domino", "initial_position_m": [0.54, 0.0, 0.2]},
+    {"id": "domino_4", "role": "domino", "initial_position_m": [0.72, 0.0, 0.2]}
+  ],
+  "active_objects": ["domino_0"],
+  "passive_objects": ["domino_1", "domino_2", "domino_3", "domino_4"],
+  "required_assets": ["domino rigid body", "support floor"],
+  "required_signals": ["trajectory", "contact_events", "rotation"],
+  "verifier_expectation": {"status": "fail", "failure_type": "F4_causality_violation"},
+  "should_pass": false,
+  "notes": "Regression fixture for unexplained simultaneous passive activation."
+}

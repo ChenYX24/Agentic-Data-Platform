@@ -1,0 +1,196 @@
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, dataclass
+from typing import Any, Iterable
+
+
+DEFAULT_VIEWS = ["front_static", "side_static", "top_down", "tracking_subject", "event_closeup"]
+MIN_EXTENT = 0.5
+
+
+@dataclass(frozen=True)
+class SceneBounds:
+    center: tuple[float, float, float]
+    extent: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class CameraViewSpec:
+    camera_id: str
+    role: str
+    location: tuple[float, float, float]
+    rotation: tuple[float, float, float]
+    fov: float
+    target: tuple[float, float, float]
+    near_clip: float | None = None
+    far_clip: float | None = None
+
+
+@dataclass(frozen=True)
+class CameraPlan:
+    scene_bounds: SceneBounds
+    views: list[CameraViewSpec]
+    strategy: str
+    warnings: list[str]
+
+
+def plan_cameras_for_scene(
+    scene_bounds: SceneBounds,
+    requested_views: list[str] | None = None,
+    min_distance_multiplier: float = 2.2,
+    fov: float = 60.0,
+) -> CameraPlan:
+    roles = normalize_views(requested_views or DEFAULT_VIEWS)
+    bounds, warnings = sanitize_bounds(scene_bounds)
+    cx, cy, cz = bounds.center
+    ex, ey, ez = bounds.extent
+    radius = max(ex, ey, ez, MIN_EXTENT)
+    distance = max(radius * min_distance_multiplier, 1.5)
+    vertical = max(ez * 1.8, distance)
+    far_clip = round(max(distance * 6.0, radius * 8.0, 10.0), 4)
+    views: list[CameraViewSpec] = []
+    for role in roles:
+        if role in {"overview", "front_static"}:
+            location = (cx + distance, cy - distance, cz + vertical)
+            rotation = look_at_rotation(location, bounds.center)
+        elif role == "front":
+            location = (cx, cy - distance * 1.35, cz + ez * 0.55)
+            rotation = look_at_rotation(location, bounds.center)
+        elif role in {"side", "side_static"}:
+            location = (cx + distance * 1.35, cy, cz + ez * 0.55)
+            rotation = look_at_rotation(location, bounds.center)
+        elif role in {"top", "top_down"}:
+            location = (cx, cy, cz + max(distance * 1.8, ez * 3.0, 2.0))
+            rotation = (-90.0, 0.0, 0.0)
+        elif role == "tracking_subject":
+            location = (cx - distance * 1.15, cy - distance * 1.25, cz + max(ez * 0.8, distance * 0.72))
+            rotation = look_at_rotation(location, bounds.center)
+        elif role == "event_closeup":
+            location = (cx - distance * 0.72, cy - distance * 0.82, cz + max(ez * 0.58, distance * 0.46))
+            rotation = look_at_rotation(location, bounds.center)
+        else:
+            warnings.append(f"unknown view role dropped: {role}")
+            continue
+        views.append(
+            CameraViewSpec(
+                camera_id=role,
+                role=role,
+                location=round_vec(location),
+                rotation=round_vec(rotation),
+                fov=float(fov),
+                target=round_vec(bounds.center),
+                near_clip=1.0,
+                far_clip=far_clip,
+            )
+        )
+    return CameraPlan(scene_bounds=bounds, views=views, strategy="bounds_auto_v1", warnings=warnings)
+
+
+def camera_plan_from_case_spec(case_spec: dict[str, Any], requested_views: list[str] | None = None, camera_strategy: str = "bounds_auto_v1") -> CameraPlan:
+    bounds, warnings = bounds_from_case_spec(case_spec)
+    plan = plan_cameras_for_scene(bounds, requested_views=requested_views)
+    if camera_strategy != "bounds_auto_v1":
+        warnings.append(f"unsupported camera strategy requested, using bounds_auto_v1: {camera_strategy}")
+    return CameraPlan(scene_bounds=plan.scene_bounds, views=plan.views, strategy=plan.strategy, warnings=[*warnings, *plan.warnings])
+
+
+def bounds_from_case_spec(case_spec: dict[str, Any]) -> tuple[SceneBounds, list[str]]:
+    warnings: list[str] = []
+    explicit = case_spec.get("scene_bounds") or (case_spec.get("scene") or {}).get("scene_bounds")
+    if isinstance(explicit, dict):
+        center = vec3(explicit.get("center"))
+        extent = vec3(explicit.get("extent"))
+        if center and extent:
+            return SceneBounds(tuple(center), tuple(extent)), warnings
+    points: list[tuple[float, float, float]] = []
+    collect_points(case_spec.get("objects"), points)
+    collect_points(case_spec.get("actors"), points)
+    collect_points((case_spec.get("scene") or {}).get("objects"), points)
+    initial_state = case_spec.get("initial_state")
+    if isinstance(initial_state, dict):
+        collect_points(initial_state.values(), points)
+    if not points:
+        warnings.append("scene bounds missing; using default bounds")
+        return SceneBounds((0.0, 0.0, 0.5), (2.0, 2.0, 1.0)), warnings
+    xs, ys, zs = zip(*points)
+    center = ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0, (min(zs) + max(zs)) / 2.0)
+    extent = (max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs))
+    return SceneBounds(round_vec(center), round_vec(extent)), warnings
+
+
+def collect_points(items: Any, points: list[tuple[float, float, float]]) -> None:
+    if not isinstance(items, Iterable) or isinstance(items, (str, bytes, dict)):
+        if isinstance(items, dict):
+            point = point_from_dict(items)
+            if point:
+                points.append(point)
+        return
+    for item in items:
+        if isinstance(item, dict):
+            point = point_from_dict(item)
+            if point:
+                points.append(point)
+
+
+def point_from_dict(data: dict[str, Any]) -> tuple[float, float, float] | None:
+    for key in ("initial_position_m", "position_m", "position", "location", "initial_location", "center"):
+        value = data.get(key)
+        point = vec3(value)
+        if point:
+            return tuple(point)
+    transform = data.get("transform")
+    if isinstance(transform, dict):
+        return point_from_dict(transform)
+    return None
+
+
+def sanitize_bounds(bounds: SceneBounds) -> tuple[SceneBounds, list[str]]:
+    warnings: list[str] = []
+    extent = tuple(max(abs(float(value)), MIN_EXTENT) for value in bounds.extent)
+    if extent != bounds.extent:
+        warnings.append("scene extent was tiny or zero; clamped to minimum extent")
+    center = tuple(float(value) for value in bounds.center)
+    return SceneBounds(round_vec(center), round_vec(extent)), warnings
+
+
+def normalize_views(views: list[str]) -> list[str]:
+    result: list[str] = []
+    for view in views:
+        key = str(view).strip().lower()
+        if key and key not in result:
+            result.append(key)
+    return result or ["overview"]
+
+
+def look_at_rotation(location: tuple[float, float, float], target: tuple[float, float, float]) -> tuple[float, float, float]:
+    dx = target[0] - location[0]
+    dy = target[1] - location[1]
+    dz = target[2] - location[2]
+    horizontal = math.sqrt(dx * dx + dy * dy) or 1e-6
+    pitch = math.degrees(math.atan2(dz, horizontal))
+    yaw = math.degrees(math.atan2(dy, dx))
+    return (pitch, 0.0, yaw)
+
+
+def vec3(value: Any) -> list[float] | None:
+    if not isinstance(value, (list, tuple)):
+        return None
+    padded = [*value, 0.0, 0.0, 0.0]
+    try:
+        return [float(padded[0]), float(padded[1]), float(padded[2])]
+    except (TypeError, ValueError):
+        return None
+
+
+def round_vec(value: tuple[float, float, float] | list[float]) -> tuple[float, float, float]:
+    return (round(float(value[0]), 4), round(float(value[1]), 4), round(float(value[2]), 4))
+
+
+def camera_plan_to_dict(plan: CameraPlan) -> dict[str, Any]:
+    return {
+        "strategy": plan.strategy,
+        "scene_bounds": asdict(plan.scene_bounds),
+        "views": [asdict(view) for view in plan.views],
+        "warnings": list(plan.warnings),
+    }

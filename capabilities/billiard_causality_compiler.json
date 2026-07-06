@@ -1,0 +1,54 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "billiard_causality_compiler",
+  "description": "Compile billiards / pool / cue-ball prompts into active-striker and passive-target rigid-body cases with contact-driven target motion.",
+  "physical_assumptions": [
+    "Only active striker bodies may have initial velocity or impulse.",
+    "Passive targets start with zero linear and angular velocity.",
+    "Passive target motion must be explained by contact propagation.",
+    "Initial sphere colliders must not overlap."
+  ],
+  "required_signals": [
+    "trajectory",
+    "contact_events",
+    "object_roles",
+    "initial_velocity"
+  ],
+  "required_assets": [
+    "sphere collider",
+    "rigid body",
+    "low-friction support surface"
+  ],
+  "verifier_rules": [
+    "Passive frame-0 speed <= epsilon.",
+    "Passive pre-contact velocity and displacement <= epsilon.",
+    "At least one active-to-passive contact exists.",
+    "Post-contact passive motion is allowed only after contact."
+  ],
+  "failure_taxonomy": [
+    "F1_missing_trajectory",
+    "F2_missing_contact_events",
+    "F3_initial_overlap",
+    "F4_causality_violation",
+    "F5_passive_precontact_motion",
+    "F6_unexplained_motion_after_render",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Clear passive initial velocities.",
+    "Increase initial spacing or reduce collider radius.",
+    "Enable collision events and contact capture.",
+    "Do not keyframe target motion before first contact."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json",
+    "cases/billiards/multi_ball_chain_contact.json",
+    "cases/billiards/six_ball_triangle_low_speed.json",
+    "cases/billiards/medium_speed_six_ball_break.json",
+    "cases/billiards/angled_grazing_contact.json"
+  ],
+  "regression_cases": [
+    "cases/billiards/negative_precontact_motion.json",
+    "cases/billiards/negative_hidden_target_velocity.json"
+  ]
+}

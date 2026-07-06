@@ -1,0 +1,37 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "asset_intent_resolution",
+  "description": "Resolve case object asset intents into typed candidates, selected assets, or explicit analytic/proxy fallback reasons.",
+  "physical_assumptions": [
+    "Physics-critical assets require collider, mass, rigid body, and collision profile.",
+    "Visual-only assets may be proxied without changing physics.",
+    "Asset fallback must be explicit and recorded."
+  ],
+  "required_signals": [
+    "asset_intents",
+    "top_k_candidates",
+    "selected_asset",
+    "fallback_reason"
+  ],
+  "required_assets": [
+    "asset registry or analytic proxy"
+  ],
+  "verifier_rules": [
+    "Physics-critical intents declare required physical properties.",
+    "Visual-only intents do not enter the physics graph.",
+    "Each unresolved intent records a fallback reason."
+  ],
+  "failure_taxonomy": [
+    "F2_asset_missing",
+    "F7_runtime_artifact_incomplete"
+  ],
+  "repair_suggestions": [
+    "Build or update the asset physics index.",
+    "Use analytic proxy for smoke if real mesh is unavailable.",
+    "Keep selected asset and fallback reason in artifacts."
+  ],
+  "smoke_cases": [
+    "cases/billiards/low_speed_single_contact.json"
+  ],
+  "regression_cases": []
+}
