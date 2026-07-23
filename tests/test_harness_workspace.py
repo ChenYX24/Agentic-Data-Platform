@@ -46,6 +46,19 @@ class HarnessWorkspaceTests(unittest.TestCase):
             with patch("harness.core.workspace.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"):
                 before_mount = setup_doctor(root, ue_executable=ue, asset_content=assets)
                 configure_ue_mount(assets, root)
+                packaged_plugin = base / "ADPPhysicsRuntime_Mac"
+                shutil.copytree(
+                    workspace_module.REPO_ROOT / "ue_template" / "Plugins" / "ADPPhysicsRuntime",
+                    packaged_plugin,
+                    ignore=shutil.ignore_patterns("Binaries", "Intermediate"),
+                )
+                packaged_binaries = packaged_plugin / "Binaries" / "Mac"
+                packaged_binaries.mkdir(parents=True)
+                (packaged_binaries / "UnrealEditor.modules").write_text("{}", encoding="utf-8")
+                (packaged_binaries / "UnrealEditor-ADPPhysicsRuntime.dylib").write_bytes(b"mac-plugin")
+                runtime_plugin = root / "ue" / "Plugins" / "ADPPhysicsRuntime"
+                runtime_plugin.unlink()
+                runtime_plugin.symlink_to(packaged_plugin, target_is_directory=True)
                 fake_engine = setup_doctor(root, ue_executable=ue, asset_content=assets)
                 write_json(
                     base / "UE_5.7" / "Engine" / "Build" / "Build.version",
