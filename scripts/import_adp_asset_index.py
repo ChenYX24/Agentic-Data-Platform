@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 SOURCE_NAME = "agenticdataplatform_asset_index"
+DEFAULT_WORKSPACE = Path.home() / "SimulatorWorkspace" / "physics_aware_harness"
 DEFAULT_QUERIES = [
     "water plane",
     "ball sphere",
@@ -111,10 +114,64 @@ def material_guess(item: dict[str, Any]) -> str:
             " ".join(item.get("tags") or []),
         )
     )
+    if any(term in haystack for term in ("billiard", "8-ball", "8ball", "pool-ball")):
+        return "resin"
+    if "felt" in haystack:
+        return "felt"
     for material in ("water", "metal", "steel", "wood", "glass", "rubber", "plastic", "stone", "concrete", "fabric"):
         if material in haystack:
             return "metal" if material == "steel" else material
     return "plastic"
+
+
+MATERIAL_DEFAULTS = {
+    "resin": {"static_friction": 0.08, "dynamic_friction": 0.06, "restitution": 0.82},
+    "felt": {"static_friction": 0.18, "dynamic_friction": 0.12, "restitution": 0.05},
+    "rubber": {"static_friction": 0.8, "dynamic_friction": 0.65, "restitution": 0.55},
+    "metal": {"static_friction": 0.45, "dynamic_friction": 0.32, "restitution": 0.22},
+    "wood": {"static_friction": 0.55, "dynamic_friction": 0.4, "restitution": 0.18},
+    "glass": {"static_friction": 0.35, "dynamic_friction": 0.25, "restitution": 0.12},
+    "stone": {"static_friction": 0.7, "dynamic_friction": 0.55, "restitution": 0.08},
+    "concrete": {"static_friction": 0.75, "dynamic_friction": 0.6, "restitution": 0.05},
+    "plastic": {"static_friction": 0.45, "dynamic_friction": 0.32, "restitution": 0.18},
+    "fabric": {"static_friction": 0.7, "dynamic_friction": 0.55, "restitution": 0.03},
+    "water": {"static_friction": 0.0, "dynamic_friction": 0.0, "restitution": 0.0},
+}
+
+
+def material_properties(category: str) -> dict[str, float]:
+    return dict(MATERIAL_DEFAULTS.get(category, MATERIAL_DEFAULTS["plastic"]))
+
+
+def slug(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "unnamed"
+
+
+def dependency_kind(path: str, raw: dict[str, dict[str, Any]]) -> str:
+    item = raw.get(path) or {}
+    class_name = str(item.get("ue_class") or "").casefold()
+    text = path.casefold()
+    if "material" in class_name or "/material" in text:
+        return "material"
+    if "blueprint" in class_name:
+        return "blueprint_logic"
+    if "skeleton" in class_name or "anim" in class_name:
+        return "animation"
+    return "asset"
+
+
+def thumbnail_path(index_path: Path, value: Any, asset_id: str = "") -> str | None:
+    candidates: list[Path] = []
+    if value:
+        path = Path(str(value))
+        candidates.append(path if path.is_absolute() else index_path.parent.parent / path)
+    if asset_id:
+        filename = asset_id.lstrip("/").replace("/", "__") + ".png"
+        candidates.append(index_path.parent / "thumbnails" / filename)
+    for path in candidates:
+        if path.is_file():
+            return str(path.resolve())
+    return None
 
 
 def bbox_size_m(item: dict[str, Any]) -> list[float] | None:
@@ -133,25 +190,83 @@ def dependency_file_paths(repo_root: Path | None, dependencies: list[str]) -> li
     return paths
 
 
-def convert_asset(asset_id: str, item: dict[str, Any], materialize_repo_root: Path | None, metadata_repo_root: Path | None = None) -> dict[str, Any]:
+def convert_asset(
+    asset_id: str,
+    item: dict[str, Any],
+    materialize_repo_root: Path | None,
+    metadata_repo_root: Path | None = None,
+    *,
+    raw: dict[str, dict[str, Any]] | None = None,
+    index_path: Path | None = None,
+) -> dict[str, Any]:
     category_l1, category_l2 = category_pair(item)
     class_name = item.get("ue_class")
     dependencies = item.get("dependencies") or []
+    raw = raw or {}
     local_file = package_file_path(materialize_repo_root, asset_id, class_name)
     metadata_file = package_file_path(metadata_repo_root or materialize_repo_root, asset_id, class_name)
     dependency_materialized_count = sum(
         1 for dependency in dependencies if is_materialized(package_file_path(materialize_repo_root, dependency, None))
     )
+    material_category = material_guess(item)
+    materialized = is_materialized(local_file)
+    interaction = item.get("interaction") if isinstance(item.get("interaction"), dict) else {}
+    dependency_records = [
+        {
+            "package": dependency,
+            "class_name": (raw.get(dependency) or {}).get("ue_class"),
+            "kind": dependency_kind(dependency, raw),
+        }
+        for dependency in dependencies
+    ]
+    aliases = sorted(
+        {
+            str(value).strip()
+            for value in [item.get("asset_name"), item.get("semantic_name"), *(item.get("tags") or [])]
+            if str(value or "").strip()
+        }
+    )
+    usage_groups = sorted(
+        {
+            category_l1,
+            f"{category_l1}/{category_l2}",
+            *(str(value) for value in interaction.get("active") or []),
+            *(str(value) for value in interaction.get("passive") or []),
+        }
+    )
+    collision_profile = ((item.get("physics") or {}).get("collision_profile") if isinstance(item.get("physics"), dict) else None) or "BlockAll"
+    collider = "mesh" if class_name in {"StaticMesh", "SkeletalMesh"} else "actor"
+    mass_kg = item.get("estimated_mass_kg")
+    preview_path = thumbnail_path(index_path, item.get("thumbnail"), asset_id) if index_path else None
     return {
         "asset_id": asset_key(asset_id),
         "name": item.get("asset_name") or asset_id.rsplit("/", 1)[-1],
+        "semantic_name": item.get("semantic_name") or "",
         "description": item.get("full_description") or item.get("semantic_name") or "",
         "category_l1": category_l1,
         "category_l2": category_l2,
         "tags": item.get("tags") or [],
+        "aliases": aliases,
+        "name_group": slug(str(item.get("semantic_name") or item.get("asset_name") or asset_id.rsplit("/", 1)[-1])),
+        "usage_groups": usage_groups,
         "bbox_size_m": bbox_size_m(item),
-        "physics": {"material": material_guess(item), "estimated_mass_kg": item.get("estimated_mass_kg")},
-        "paths": {"ue5": object_path(asset_id), "thumbnail": item.get("thumbnail")},
+        "source_kind": "local_ue_project" if materialized else "catalog_candidate",
+        "source_uri": f"ue://{asset_id.lstrip('/')}",
+        "license": "UNVERIFIED_LOCAL_ENTITLEMENT",
+        "quality_status": "local_preview" if materialized else "discovered",
+        "ue_path": object_path(asset_id),
+        "collider": collider,
+        "mass_kg": mass_kg,
+        "material": material_properties(material_category),
+        "collision_profile": collision_profile,
+        "physics": {
+            "material_category": material_category,
+            "material_properties": material_properties(material_category),
+            "estimated_mass_kg": mass_kg,
+            "collider": collider,
+            "collision_profile": collision_profile,
+        },
+        "paths": {"ue5": object_path(asset_id), "thumbnail": preview_path},
         "ue": {
             "object_path": object_path(asset_id),
             "package_name": asset_id,
@@ -159,6 +274,19 @@ def convert_asset(asset_id: str, item: dict[str, Any], materialize_repo_root: Pa
             "class_name": class_name,
             "dependencies": dependencies,
             "material_paths": [dep for dep in dependencies if "/Material" in dep or "/Materials" in dep],
+        },
+        "bundle": {
+            "bundle_id": f"ue_bundle:{asset_id}",
+            "owner_asset": asset_id,
+            "dependencies": dependency_records,
+            "blueprint_logic_dependencies": [row["package"] for row in dependency_records if row["kind"] == "blueprint_logic"],
+            "callable_functions": [],
+            "function_introspection_status": "pending_ue_reflection" if class_name == "Blueprint" else "not_applicable",
+        },
+        "acquisition": {
+            "mode": "preimported" if materialized else "harness_find_at_runtime",
+            "status": "materialized" if materialized else "catalogued_not_materialized",
+            "generator": None,
         },
         "adp": {
             "asset_id": asset_id,
@@ -170,7 +298,7 @@ def convert_asset(asset_id: str, item: dict[str, Any], materialize_repo_root: Pa
             "dependency_materialized_count": dependency_materialized_count,
         },
         "source": SOURCE_NAME,
-        "materialized": is_materialized(local_file),
+        "materialized": materialized,
     }
 
 
@@ -186,7 +314,17 @@ def build_registry(
         raise ValueError(f"ADP index must be a JSON object: {index_path}")
     repo = infer_repo_root(source, repo_root)
     metadata_repo = Path(metadata_repo_root) if metadata_repo_root else repo
-    assets = [convert_asset(asset_id, item, repo, metadata_repo) for asset_id, item in raw.items()]
+    assets = [
+        convert_asset(
+            asset_id,
+            item,
+            repo,
+            metadata_repo,
+            raw=raw,
+            index_path=index_path,
+        )
+        for asset_id, item in raw.items()
+    ]
     class_counts: dict[str, int] = {}
     category_counts: dict[str, int] = {}
     materialized_counts = {"materialized": 0, "missing": 0}
@@ -197,6 +335,7 @@ def build_registry(
         category_counts[category] = category_counts.get(category, 0) + 1
         materialized_counts["materialized" if asset.get("materialized") else "missing"] += 1
     return {
+        "schema_version": "asset_registry.v3",
         "source": SOURCE_NAME,
         "source_path": str(metadata_source_path or index_path),
         "repo_root": str(metadata_repo) if metadata_repo else None,
@@ -205,6 +344,11 @@ def build_registry(
         "class_counts": dict(sorted(class_counts.items())),
         "category_counts": dict(sorted(category_counts.items())),
         "materialized_counts": materialized_counts,
+        "acquisition_modes": {
+            "preimported": "Harness indexes already-materialized UE packages.",
+            "harness_generate": "Harness records generator inputs and imports generated output before use.",
+            "harness_find_at_runtime": "Harness may discover candidates, but must materialize and license-check before reference use.",
+        },
     }
 
 
@@ -293,19 +437,82 @@ def build_scenario_manifest(registry: dict[str, Any]) -> dict[str, Any]:
         maps.append(
             {
                 **compact(asset),
+                "description": asset.get("description") or asset.get("semantic_name") or asset.get("name"),
+                "tags": list(asset.get("tags") or []),
+                "thumbnail": (asset.get("paths") or {}).get("thumbnail"),
+                "quality_status": asset.get("quality_status"),
+                "license": asset.get("license"),
                 "dependency_count": len(deps),
                 "materialized_dependency_count": materialized_deps,
                 "missing_dependency_count": max(len(deps) - materialized_deps, 0),
                 "dependencies": deps,
+                "dependency_bundle": asset.get("bundle") or {},
+                "preview_presets": map_preview_presets(asset),
             }
         )
     maps.sort(key=lambda item: (not item.get("materialized"), item.get("name") or ""))
     return {
+        "schema_version": "map_catalog.v1",
         "source": registry.get("source"),
         "source_path": registry.get("source_path"),
         "repo_root": registry.get("repo_root"),
         "map_count": len(maps),
         "maps": maps,
+    }
+
+
+def map_preview_presets(asset: dict[str, Any]) -> list[dict[str, Any]]:
+    map_id = str((asset.get("ue") or {}).get("package_name") or asset.get("asset_id") or "map")
+    return [
+        {
+            "preset_id": f"{slug(map_id)}__balanced_static",
+            "description": "Readable map-light preview from three validated static viewpoints.",
+            "camera_ids": ["front_static", "side_static", "top_down"],
+            "lighting_preset": "map_lights_balanced_fill",
+            "render_passes": ["rgb"],
+            "preview_status": "pending_capture",
+            "runtime_status": "supported_static",
+        },
+        {
+            "preset_id": f"{slug(map_id)}__data_neutral",
+            "description": "Fixed-exposure sensor preview for RGB, depth, and instance segmentation.",
+            "camera_ids": ["front_static", "side_static", "top_down"],
+            "lighting_preset": "fixed_exposure_data_neutral",
+            "render_passes": ["rgb", "depth", "segmentation"],
+            "preview_status": "pending_capture",
+            "runtime_status": "supported_static",
+        },
+        {
+            "preset_id": f"{slug(map_id)}__tracking_candidate",
+            "description": "Moving subject-tracking preview; selectable only after runtime trajectory validation.",
+            "camera_ids": ["tracking_subject"],
+            "lighting_preset": "cinematic_subject_key_fill",
+            "render_passes": ["rgb"],
+            "preview_status": "not_generated",
+            "runtime_status": "planned_unverified",
+        },
+    ]
+
+
+def build_group_index(registry: dict[str, Any]) -> dict[str, Any]:
+    name_groups: dict[str, list[str]] = {}
+    usage_groups: dict[str, list[str]] = {}
+    bundles: list[dict[str, Any]] = []
+    for asset in registry.get("assets", []):
+        asset_id = str(asset.get("asset_id") or "")
+        if not asset_id:
+            continue
+        name_groups.setdefault(str(asset.get("name_group") or "unnamed"), []).append(asset_id)
+        for group in asset.get("usage_groups") or []:
+            usage_groups.setdefault(str(group), []).append(asset_id)
+        bundle = asset.get("bundle")
+        if isinstance(bundle, dict) and bundle.get("dependencies"):
+            bundles.append(bundle)
+    return {
+        "schema_version": "asset_group_index.v1",
+        "name_groups": {key: sorted(values) for key, values in sorted(name_groups.items())},
+        "usage_groups": {key: sorted(values) for key, values in sorted(usage_groups.items())},
+        "dependency_bundles": bundles,
     }
 
 
@@ -318,7 +525,7 @@ def manifest_entry(key: str, asset: dict[str, Any]) -> dict[str, Any]:
         "category_l2": asset.get("category_l2"),
         "ue5_path": asset.get("paths", {}).get("ue5"),
         "material_path": None,
-        "material": (asset.get("physics") or {}).get("material"),
+        "material": (asset.get("physics") or {}).get("material_properties"),
         "tags": list(asset.get("tags") or []),
         "bbox_size_m": asset.get("bbox_size_m"),
         "physics": dict(asset.get("physics") or {}),
@@ -382,7 +589,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo-root", default=None, help="Optional ADP repo root for materialized checks")
     parser.add_argument("--metadata-repo-root", default=None, help="Repo root path to write into generated metadata")
     parser.add_argument("--metadata-source-path", default=None, help="Asset index path to write into generated metadata")
-    parser.add_argument("--output-dir", default="assets", help="Studio assets output directory")
+    parser.add_argument(
+        "--output-dir",
+        default=str(Path(os.environ.get("SIM_HARNESS_WORKSPACE", DEFAULT_WORKSPACE)) / "catalog" / "adp"),
+        help="Local catalog output directory outside Git.",
+    )
     parser.add_argument("--top-k", type=int, default=8)
     return parser.parse_args()
 
@@ -394,11 +605,15 @@ def main() -> None:
     manifest = build_default_manifest(registry)
     search_report = build_search_report(registry, DEFAULT_QUERIES, args.top_k)
     scenario_manifest = build_scenario_manifest(registry)
+    group_index = build_group_index(registry)
+    write_json(output_dir / "asset_registry.local.json", registry)
     write_json(output_dir / "full_asset_registry.json", registry)
     write_json(output_dir / "asset_database_manifest.json", manifest)
     write_json(output_dir / "gitlab_only_manifest.json", manifest)
     write_json(output_dir / "search_report.json", search_report)
     write_json(output_dir / "scenario_manifest.json", scenario_manifest)
+    write_json(output_dir / "map_catalog.json", scenario_manifest)
+    write_json(output_dir / "asset_group_index.json", group_index)
     print(
         json.dumps(
             {

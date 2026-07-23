@@ -64,6 +64,7 @@ void AADPPhysicsRuntimeDriver::ResetDriver()
 {
 	BodyConfigs.Reset();
 	CapturedFrames.Reset();
+	PendingNativeContacts.Reset();
 	OutputPath.Reset();
 	ElapsedSeconds = 0.0f;
 	AccumulatedSeconds = 0.0f;
@@ -147,6 +148,7 @@ void AADPPhysicsRuntimeDriver::RegisterStaticBody(FName BodyId, AActor* Actor)
 void AADPPhysicsRuntimeDriver::StartCapture(float InSampleIntervalSeconds, int32 InMaxFrames, const FString& InOutputPath)
 {
 	CapturedFrames.Reset();
+	PendingNativeContacts.Reset();
 	OutputPath = InOutputPath;
 	SampleIntervalSeconds = FMath::Max(0.001f, InSampleIntervalSeconds);
 	MaxFrames = FMath::Max(1, InMaxFrames);
@@ -251,6 +253,9 @@ void AADPPhysicsRuntimeDriver::ConfigureBody(const FADPDrivenBodyConfig& Config)
 	Primitive->SetMobility(EComponentMobility::Movable);
 	Primitive->SetCollisionEnabled(Config.bCollisionEnabled ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 	Primitive->SetCollisionProfileName(Config.bDynamic ? FName(TEXT("PhysicsActor")) : FName(TEXT("BlockAll")));
+	Primitive->SetNotifyRigidBodyCollision(true);
+	Primitive->OnComponentHit.RemoveDynamic(this, &AADPPhysicsRuntimeDriver::HandleComponentHit);
+	Primitive->OnComponentHit.AddDynamic(this, &AADPPhysicsRuntimeDriver::HandleComponentHit);
 	Primitive->SetSimulatePhysics(Config.bDynamic && Config.bSimulatePhysics);
 	Primitive->SetEnableGravity(Config.bDynamic && Config.bEnableGravity);
 
@@ -303,6 +308,20 @@ void AADPPhysicsRuntimeDriver::CaptureFrame()
 		Frame.Transforms.Add(Transform);
 	}
 
+	TSet<FString> NativePairs;
+	for (const FADPContactSample& NativeContact : PendingNativeContacts)
+	{
+		Frame.Contacts.Add(NativeContact);
+		FString BodyA = NativeContact.BodyA.ToString();
+		FString BodyB = NativeContact.BodyB.ToString();
+		if (BodyB < BodyA)
+		{
+			Swap(BodyA, BodyB);
+		}
+		NativePairs.Add(BodyA + TEXT("|") + BodyB);
+	}
+	PendingNativeContacts.Reset();
+
 	for (int32 IndexA = 0; IndexA < BodyConfigs.Num(); ++IndexA)
 	{
 		for (int32 IndexB = IndexA + 1; IndexB < BodyConfigs.Num(); ++IndexB)
@@ -317,12 +336,62 @@ void AADPPhysicsRuntimeDriver::CaptureFrame()
 			FADPContactSample Contact;
 			if (ComputeBoundsContact(A, B, Contact))
 			{
-				Frame.Contacts.Add(Contact);
+				FString BodyA = Contact.BodyA.ToString();
+				FString BodyB = Contact.BodyB.ToString();
+				if (BodyB < BodyA)
+				{
+					Swap(BodyA, BodyB);
+				}
+				if (!NativePairs.Contains(BodyA + TEXT("|") + BodyB))
+				{
+					Frame.Contacts.Add(Contact);
+				}
 			}
 		}
 	}
 
 	CapturedFrames.Add(Frame);
+}
+
+void AADPPhysicsRuntimeDriver::HandleComponentHit(
+	UPrimitiveComponent* HitComponent,
+	AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent,
+	FVector NormalImpulse,
+	const FHitResult& Hit)
+{
+	if (!bCapturing || HitComponent == nullptr || OtherActor == nullptr)
+	{
+		return;
+	}
+	const FName BodyA = FindBodyId(HitComponent->GetOwner());
+	const FName BodyB = FindBodyId(OtherActor);
+	if (BodyA.IsNone() || BodyB.IsNone() || BodyA == BodyB)
+	{
+		return;
+	}
+
+	FADPContactSample Contact;
+	Contact.FrameIndex = NextFrameIndex;
+	Contact.TimeSeconds = ElapsedSeconds;
+	Contact.BodyA = BodyA;
+	Contact.BodyB = BodyB;
+	Contact.bNativeCollision = true;
+	Contact.NormalImpulseNs = NormalImpulse.Size() / 100.0f;
+	Contact.ImpactPointCm = Hit.ImpactPoint;
+	Contact.ImpactNormal = Hit.ImpactNormal;
+	for (FADPContactSample& Existing : PendingNativeContacts)
+	{
+		if ((Existing.BodyA == BodyA && Existing.BodyB == BodyB) || (Existing.BodyA == BodyB && Existing.BodyB == BodyA))
+		{
+			if (Contact.NormalImpulseNs > Existing.NormalImpulseNs)
+			{
+				Existing = Contact;
+			}
+			return;
+		}
+	}
+	PendingNativeContacts.Add(Contact);
 }
 
 UPrimitiveComponent* AADPPhysicsRuntimeDriver::FindPrimitiveComponent(AActor* Actor) const
@@ -332,6 +401,18 @@ UPrimitiveComponent* AADPPhysicsRuntimeDriver::FindPrimitiveComponent(AActor* Ac
 		return nullptr;
 	}
 	return Actor->FindComponentByClass<UPrimitiveComponent>();
+}
+
+FName AADPPhysicsRuntimeDriver::FindBodyId(AActor* Actor) const
+{
+	for (const FADPDrivenBodyConfig& Config : BodyConfigs)
+	{
+		if (Config.Actor.Get() == Actor)
+		{
+			return Config.BodyId;
+		}
+	}
+	return NAME_None;
 }
 
 bool AADPPhysicsRuntimeDriver::ComputeBoundsContact(const FADPDrivenBodyConfig& A, const FADPDrivenBodyConfig& B, FADPContactSample& OutContact) const
@@ -409,7 +490,13 @@ FString AADPPhysicsRuntimeDriver::BuildCaptureJson() const
 			Bodies.Add(MakeShared<FJsonValueString>(Contact.BodyA.ToString()));
 			Bodies.Add(MakeShared<FJsonValueString>(Contact.BodyB.ToString()));
 			ContactObject->SetArrayField(TEXT("objects"), Bodies);
-			ContactObject->SetStringField(TEXT("method"), TEXT("adp_cpp_runtime_bounds_overlap_or_near_contact"));
+			ContactObject->SetStringField(
+				TEXT("method"),
+				Contact.bNativeCollision ? TEXT("ue_on_component_hit") : TEXT("adp_cpp_runtime_bounds_overlap_or_near_contact"));
+			ContactObject->SetBoolField(TEXT("native_collision"), Contact.bNativeCollision);
+			ContactObject->SetNumberField(TEXT("normal_impulse_n_s"), Contact.NormalImpulseNs);
+			ContactObject->SetArrayField(TEXT("impact_point_cm"), VectorToJsonArray(Contact.ImpactPointCm));
+			ContactObject->SetArrayField(TEXT("impact_normal"), VectorToJsonArray(Contact.ImpactNormal));
 			ContactObject->SetNumberField(TEXT("gap_cm"), Contact.GapCm);
 			TSharedRef<FJsonObject> AxisObject = MakeShared<FJsonObject>();
 			AxisObject->SetNumberField(TEXT("x"), Contact.AxisGapsCm.X);

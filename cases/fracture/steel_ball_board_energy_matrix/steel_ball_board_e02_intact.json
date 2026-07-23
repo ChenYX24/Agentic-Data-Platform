@@ -1,0 +1,112 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "steel_ball_board_e02_intact",
+  "capability_id": "brittle_impact_fracture",
+  "prompt": "A 4 kg steel sphere starts at 1 m/s and strikes a Chaos Geometry Collection board. Its nominal 2 J incident energy is below the declared 10 J gate, so contact occurs but the board must remain intact.",
+  "scene": {
+    "layout": "steel_ball_destructible_board_energy_probe",
+    "duration_s": 2.5,
+    "coordinate_system": "z_up",
+    "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day",
+    "lighting_preset": "map_lights_balanced_fill",
+    "scene_bounds": {"center": [0.0, -0.35, 0.7], "extent": [1.2, 1.8, 1.0]}
+  },
+  "timebase": {"physics_hz": 120, "render_fps": 24, "sample_phase": "initial_then_post_step"},
+  "physical_parameters": {
+    "impactor_material": "steel",
+    "impactor_mass_kg": 4.0,
+    "impact_speed_m_s": 1.0,
+    "nominal_incident_energy_j": 2.0,
+    "minimum_impact_energy_j": 10.0,
+    "gravity_enabled": true,
+    "gravity_m_s2": [0.0, 0.0, -9.81]
+  },
+  "initial_state": {"active_impactor": "steel_ball", "brittle_body_stationary_until_contact": true},
+  "expected_physics": {
+    "duration_s": 2.5,
+    "coordinate_system": "z_up",
+    "impactor_object_id": "steel_ball",
+    "brittle_object_id": "destructible_board",
+    "expected_contact_pair": ["steel_ball", "destructible_board"],
+    "expected_fracture": false,
+    "nominal_incident_energy_j": 2.0,
+    "minimum_impact_energy_j": 10.0,
+    "support": {"default": "impact_floor"},
+    "simulation_contract": {
+      "input_mode": "initial_state_only",
+      "state_solver": "ue_chaos",
+      "trajectory_role": "solver_output_render_cache",
+      "fracture_trigger": "energy_gated_contact_external_strain",
+      "autonomous_collision_damage": false
+    },
+    "camera": {
+      "static": ["front_static", "side_static", "top_down"],
+      "dynamic": ["tracking_subject", "event_closeup"]
+    }
+  },
+  "objects": [
+    {
+      "id": "steel_ball",
+      "role": "projectile",
+      "shape": "sphere",
+      "radius_m": 0.05,
+      "collider": "sphere",
+      "collision_profile": "PhysicsActor",
+      "mass_kg": 4.0,
+      "enable_gravity": false,
+      "use_ccd": true,
+      "asset_query": "SM_FirstPersonProjectileMesh",
+      "material": {"name": "steel", "static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.15},
+      "force_analytic_proxy": true,
+      "initial_position_m": [0.0, -1.4, 0.1],
+      "initial_velocity_m_s": [0.0, 1.0, 0.0]
+    },
+    {
+      "id": "destructible_board",
+      "role": "brittle_fracture_body",
+      "shape": "thin_box",
+      "size_m": [1.6, 0.6, 0.62],
+      "collider": "actor",
+      "collision_profile": "PhysicsActor",
+      "mass_kg": 15.0,
+      "asset_query": "BP_BoardDestructible",
+      "material": {"name": "destructible_board", "static_friction": 0.45, "dynamic_friction": 0.32, "restitution": 0.18},
+      "fracture_response": {
+        "mode": "contact_external_strain",
+        "impactor_id": "steel_ball",
+        "minimum_impact_energy_j": 10.0,
+        "external_strain": 750000.0,
+        "damage_thresholds": [500000.0, 50000.0, 5000.0],
+        "radius_m": 0.5,
+        "propagation_depth": 2,
+        "propagation_factor": 0.5
+      },
+      "initial_position_m": [0.0, 0.0, 0.31],
+      "initial_rotation_deg": [0.0, 0.0, 0.0],
+      "initial_velocity_m_s": [0.0, 0.0, 0.0]
+    },
+    {
+      "id": "impact_floor",
+      "role": "support",
+      "shape": "box",
+      "size_m": [3.2, 2.4, 0.1],
+      "collider": "box",
+      "collision_profile": "BlockAll",
+      "mass_kg": 100.0,
+      "material": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.05},
+      "force_analytic_proxy": true,
+      "fit_dynamic_plan": false,
+      "initial_position_m": [-0.25, 0.0, 0.0]
+    }
+  ],
+  "active_objects": ["steel_ball"],
+  "passive_objects": ["destructible_board"],
+  "required_assets": ["SM_FirstPersonProjectileMesh visual", "BP_BoardDestructible and GC_SM_board1", "analytic sphere collider", "analytic support floor"],
+  "required_signals": ["trajectory", "native_collision_events", "impact_energy_j", "camera_trajectory", "rgb", "depth", "instance_segmentation"],
+  "allowed_proxy_policy": "controlled_analytic_colliders_plus_local_preview_assets",
+  "verification_rules": ["initial_rigid_state_only", "native_contact_required", "measured_energy_below_gate", "no_fracture_event", "cross_pass_intact_state_match"],
+  "verifier_expectation": {"status": "pass"},
+  "negative_or_boundary": false,
+  "should_pass": true,
+  "notes": "Valid intact control, not a failed case. The current breakable asset is a garage-board Geometry Collection rather than glass. Formal completion still requires native collision telemetry and all five declared camera views with RGB, metric depth, and instance segmentation; a front-only run is diagnostic."
+}

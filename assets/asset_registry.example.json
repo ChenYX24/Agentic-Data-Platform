@@ -1,6 +1,107 @@
 {
-  "schema_version": "asset_registry.v1",
+  "schema_version": "asset_registry.v2",
+  "provenance_defaults": {
+    "source_kind": "engine_builtin",
+    "license": "Unreal Engine EULA",
+    "quality_status": "approved_proxy"
+  },
   "assets": [
+    {
+      "asset_id": "GC_GlassPanelRadial",
+      "name": "GC_GlassPanelRadial",
+      "category": "physics_critical",
+      "type": "geometry_collection",
+      "asset_kind": "geometry_collection",
+      "preserve_authored_scale": true,
+      "authored_size_m": [1.6, 0.02, 1.0],
+      "tags": ["GC_GlassPanelRadial", "glass_panel", "glass", "radial_voronoi", "impact_centered", "brittle_fracture_body", "thin_box"],
+      "ue_path": "/Game/HarnessGenerated/Glass/GC_GlassPanelRadial.GC_GlassPanelRadial",
+      "source_kind": "harness_generated",
+      "source_uri": "harness://generators/ue/radial_glass_panel",
+      "license": "Unreal Engine EULA",
+      "quality_status": "local_preview",
+      "collider": "geometry_collection",
+      "mass_kg": 15.0,
+      "material": {
+        "static_friction": 0.35,
+        "dynamic_friction": 0.25,
+        "restitution": 0.12
+      },
+      "collision_profile": "PhysicsActor",
+      "acquisition": {
+        "mode": "generated_during_setup",
+        "generator": "scripts/generate_ue_glass_panel_asset.py",
+        "fracture_pattern": "radial_voronoi",
+        "fracture_center_local_cm": [0.0, 0.0, 15.0]
+      }
+    },
+    {
+      "asset_id": "GC_GlassPanel",
+      "name": "GC_GlassPanel",
+      "category": "physics_critical",
+      "type": "geometry_collection",
+      "asset_kind": "geometry_collection",
+      "preserve_authored_scale": true,
+      "authored_size_m": [1.6, 0.02, 1.0],
+      "tags": ["GC_GlassPanel", "glass_panel", "glass", "brittle_fracture_body", "thin_box"],
+      "ue_path": "/Game/HarnessGenerated/Glass/GC_GlassPanel.GC_GlassPanel",
+      "source_kind": "harness_generated",
+      "source_uri": "harness://generators/ue/glass_panel",
+      "license": "Unreal Engine EULA",
+      "quality_status": "local_preview",
+      "collider": "geometry_collection",
+      "mass_kg": 15.0,
+      "material": {
+        "static_friction": 0.35,
+        "dynamic_friction": 0.25,
+        "restitution": 0.12
+      },
+      "collision_profile": "PhysicsActor",
+      "acquisition": {
+        "mode": "generated_during_setup",
+        "generator": "scripts/generate_ue_glass_panel_asset.py"
+      }
+    },
+    {
+      "asset_id": "GC_GlassPanelRadialLeft45",
+      "name": "GC_GlassPanelRadialLeft45",
+      "category": "physics_critical",
+      "type": "geometry_collection",
+      "asset_kind": "geometry_collection",
+      "preserve_authored_scale": true,
+      "authored_size_m": [1.6, 0.02, 1.0],
+      "tags": ["GC_GlassPanelRadialLeft45", "glass_panel", "glass", "radial_voronoi", "impact_left", "brittle_fracture_body", "thin_box"],
+      "ue_path": "/Game/HarnessGenerated/Glass/GC_GlassPanelRadialLeft45.GC_GlassPanelRadialLeft45",
+      "source_kind": "harness_generated",
+      "source_uri": "harness://generators/ue/radial_glass_panel?center=-45,0,15",
+      "license": "Unreal Engine EULA",
+      "quality_status": "local_preview",
+      "collider": "geometry_collection",
+      "mass_kg": 15.0,
+      "material": {"static_friction": 0.35, "dynamic_friction": 0.25, "restitution": 0.12},
+      "collision_profile": "PhysicsActor",
+      "acquisition": {"mode": "generated_during_setup", "generator": "scripts/generate_ue_glass_panel_asset.py", "fracture_pattern": "radial_voronoi", "fracture_center_local_cm": [-45.0, 0.0, 15.0]}
+    },
+    {
+      "asset_id": "GC_GlassPanelRadialRight45",
+      "name": "GC_GlassPanelRadialRight45",
+      "category": "physics_critical",
+      "type": "geometry_collection",
+      "asset_kind": "geometry_collection",
+      "preserve_authored_scale": true,
+      "authored_size_m": [1.6, 0.02, 1.0],
+      "tags": ["GC_GlassPanelRadialRight45", "glass_panel", "glass", "radial_voronoi", "impact_right", "brittle_fracture_body", "thin_box"],
+      "ue_path": "/Game/HarnessGenerated/Glass/GC_GlassPanelRadialRight45.GC_GlassPanelRadialRight45",
+      "source_kind": "harness_generated",
+      "source_uri": "harness://generators/ue/radial_glass_panel?center=45,0,15",
+      "license": "Unreal Engine EULA",
+      "quality_status": "local_preview",
+      "collider": "geometry_collection",
+      "mass_kg": 15.0,
+      "material": {"static_friction": 0.35, "dynamic_friction": 0.25, "restitution": 0.12},
+      "collision_profile": "PhysicsActor",
+      "acquisition": {"mode": "generated_during_setup", "generator": "scripts/generate_ue_glass_panel_asset.py", "fracture_pattern": "radial_voronoi", "fracture_center_local_cm": [45.0, 0.0, 15.0]}
+    },
     {
       "asset_id": "analytic_sphere_billiard_ball",
       "category": "physics_critical",
@@ -89,6 +190,7 @@
       "tags": ["ramp", "slope", "inclined_plane", "slope_surface"],
       "ue_path": "/Engine/BasicShapes/Cube.Cube",
       "collider": "box",
+      "mass_kg": 100.0,
       "material": {
         "static_friction": 0.5,
         "dynamic_friction": 0.35,

@@ -1,0 +1,50 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "container_fill_stirring_v001_swirl_release",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "Water in a deep basin is released from a measured swirling initial state after stirring, then the vortex evolves and decays under the fluid solver without any scripted particle trajectories.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "stirred_free_surface_vortex_decay",
+    "minimum_initial_flow_speed_m_s": 0.22,
+    "minimum_final_surface_component_fraction": 0.95
+  },
+  "objects": [
+    {
+      "id": "water",
+      "role": "fluid",
+      "initial_position_m": [0.0, 0.0, 0.25],
+      "initial_condition": {
+        "type": "container_fill",
+        "shape": "box",
+        "size_m": [0.62, 0.50, 0.44],
+        "velocity_field": {
+          "type": "swirl_z",
+          "center_m": [0.0, 0.0, 0.24],
+          "angular_speed_rad_s": 4.0,
+          "maximum_speed_m_s": 0.80
+        }
+      }
+    },
+    {
+      "id": "basin",
+      "role": "rigid_container",
+      "floor_z_m": 0.0,
+      "wall_half_extent_m": 0.38
+    }
+  ],
+  "active_objects": ["water"],
+  "passive_objects": ["basin"],
+  "required_assets": ["deep rigid basin", "water volume"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 3.0,
+    "particle_size_m": 0.03,
+    "pre_roll_s": 1.0
+  },
+  "notes": "This first stirring slice initializes a declared swirl only once after a still-water pre-roll. A visible kinematic stirring tool and tool-fluid contact lineage are a later version; no per-frame particle trajectory is injected."
+}

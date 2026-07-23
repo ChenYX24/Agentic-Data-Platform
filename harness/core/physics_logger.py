@@ -6,7 +6,13 @@ from typing import Any
 PHYSICS_TRACE_SCHEMA_VERSION = "physics_trace.v2.3"
 
 
-def build_physics_trace(trajectory: list[dict[str, Any]], contact_events: list[dict[str, Any]], *, fps: int | float) -> dict[str, Any]:
+def build_physics_trace(
+    trajectory: list[dict[str, Any]],
+    contact_events: list[dict[str, Any]],
+    *,
+    fps: int | float,
+    timebase: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     frames = []
     for frame in trajectory:
         frame_id = int(frame.get("frame") or frame.get("frame_id") or 0)
@@ -33,6 +39,8 @@ def build_physics_trace(trajectory: list[dict[str, Any]], contact_events: list[d
         "fps": fps,
         "frame_count": len(frames),
         "timestep_s": round(1.0 / max(float(fps or 0), 1.0), 8),
+        "physics_timestep_s": (timebase or {}).get("physics_dt_s"),
+        "timebase": timebase or {},
         "strict_timestep": True,
         "frames": frames,
         "contact_events": contact_events,

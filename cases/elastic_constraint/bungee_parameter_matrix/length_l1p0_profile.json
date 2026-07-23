@@ -1,0 +1,32 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "bungee_rebound__length_l1p0_profile",
+  "capability_id": "elastic_constraint_rebound",
+  "prompt": "A 0.8 kg payload starts at 1.0 m on a short 1.0 m bungee tether, rebounds, and settles in a vertical profile view.",
+  "scene": {
+    "duration_s": 4.0,
+    "post_event_tail_s": 1.0,
+    "scene_bounds": {"center": [0.0, 0.0, 1.05], "extent": [1.4, 1.4, 2.3]},
+    "camera_overrides": {
+      "front_static": {"location": [0.0, -4.0, 1.05], "target": [0.0, 0.0, 0.85], "fov": 45.0},
+      "side_static": {"location": [4.0, 0.0, 1.05], "target": [0.0, 0.0, 0.85], "fov": 45.0},
+      "top_down": {"role": "high_oblique_static", "location": [3.2, -3.2, 4.0], "target": [0.0, 0.0, 1.0], "fov": 42.0},
+      "tracking_subject": {"location": [-2.8, -3.5, 1.25], "target": [0.0, 0.0, 1.0], "fov": 42.0},
+      "event_closeup": {"location": [2.2, -3.6, 1.0], "target": [0.0, 0.0, 0.9], "fov": 36.0}
+    }
+  },
+  "physical_parameters": {"payload_initial_height_m": 1.0, "payload_mass_kg": 0.8, "rest_length_m": 1.0},
+  "sweep_metadata": {"matrix": "elastic_rope_length_extreme_ofat", "parameter": "rest_length_m", "value": 1.0, "base_case_id": "bungee_rebound__length_l1p0_profile"},
+  "expected_physics": {"coordinate_system": "z_up", "anchor_object_id": "anchor", "constrained_object_id": "payload", "rest_length_m": 1.0, "max_extension_m": 0.42, "expected_min_extension_m": 0.25, "expected_min_rebound_speed_m_s": 0.2, "constraint_stiffness_n_m": 45.0, "damping_ratio": 0.22},
+  "objects": [
+    {"id": "anchor", "role": "elastic_constraint_anchor", "shape": "fixed_point", "size_m": [0.18, 0.18, 0.18], "initial_position_m": [0.0, 0.0, 2.0], "initial_velocity_m_s": [0.0, 0.0, 0.0], "kinematic": true},
+    {"id": "payload", "role": "elastic_constrained_body", "shape": "sphere", "radius_m": 0.12, "mass_kg": 0.8, "initial_position_m": [0.0, 0.0, 1.0], "initial_velocity_m_s": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": [],
+  "passive_objects": ["payload"],
+  "required_assets": ["elastic constraint anchor", "elastic constrained rigid body", "elastic tether constraint"],
+  "required_signals": ["trajectory", "constraint_trace", "elastic_constraint_labels"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Extreme rope-length OFAT baseline; camera acquisition is shared with the 1.5 m condition."
+}

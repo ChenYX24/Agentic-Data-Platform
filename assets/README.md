@@ -26,6 +26,17 @@ Set the harness path explicitly:
 export SIM_STUDIO_ASSET_REGISTRY="$PWD/assets/asset_registry.local.json"
 ```
 
-Physics-critical assets should include collider, mass, material, and collision
-profile metadata. Visual-only assets can be omitted or downgraded to analytic
-proxy assets.
+Every selected asset must record `source_kind`, `source_uri`, `license`,
+`quality_status`, and `ue_path`. Materialized local, Fab, open-source, and
+generated files must also record their SHA-256 as `sha256`. Engine built-ins and
+analytic proxies use their UE URI as content identity and do not require a file
+hash.
+
+Physics-critical assets must additionally include `collider`, `mass_kg`,
+`material`, and `collision_profile`. The resolver skips candidates that fail
+this gate and falls back to an analytic proxy. Recommended acquisition order:
+
+1. approved local/Fab asset;
+2. approved open-source asset;
+3. generated asset with recorded generator inputs;
+4. approved analytic proxy.

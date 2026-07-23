@@ -1,0 +1,35 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "glass_panel_e16_shatter",
+  "capability_id": "brittle_impact_fracture",
+  "prompt": "An 8 kg steel ball strikes a vertical glass-material Chaos panel at 2 m/s. The measured incident energy should select the shattered response, producing broader fragmentation without the burst impulse.",
+  "scene": {"layout": "vertical_glass_panel_energy_response", "duration_s": 3.0, "coordinate_system": "z_up", "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day", "lighting_preset": "map_lights_balanced_fill", "scene_bounds": {"center": [0.0, -0.35, 0.6], "extent": [1.4, 1.9, 1.0]}},
+  "timebase": {"physics_hz": 120, "render_fps": 24, "sample_phase": "initial_then_post_step"},
+  "physical_parameters": {"impactor_material": "steel", "impactor_mass_kg": 8.0, "impact_speed_m_s": 2.0, "nominal_incident_energy_j": 16.0, "energy_response_curve_j": {"cracked": 2.0, "shattered": 10.0, "burst": 25.0}, "ballistic_time_to_impact_s": 0.25, "target_impact_point_m": [0.0, -0.08, 0.65], "gravity_enabled": true, "gravity_m_s2": [0.0, 0.0, -9.81]},
+  "initial_state": {"active_impactor": "steel_ball", "brittle_body_stationary_until_contact": true},
+  "expected_physics": {
+    "duration_s": 3.0, "coordinate_system": "z_up", "impactor_object_id": "steel_ball", "brittle_object_id": "glass_panel", "expected_contact_pair": ["steel_ball", "glass_panel"], "expected_fracture": true, "expected_damage_state": "shattered", "expected_min_fragment_count": 2, "nominal_incident_energy_j": 16.0, "support": {"default": "impact_floor"},
+    "simulation_contract": {"input_mode": "initial_state_only", "state_solver": "ue_chaos", "trajectory_role": "solver_output_render_cache", "fracture_trigger": "measured_energy_response_curve", "autonomous_collision_damage": false},
+    "camera": {"static": ["front_static", "side_static", "top_down"], "dynamic": ["tracking_subject", "event_closeup"]}
+  },
+  "objects": [
+    {"id": "steel_ball", "role": "projectile", "shape": "sphere", "radius_m": 0.07, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 8.0, "enable_gravity": true, "use_ccd": true, "asset_query": "SM_FirstPersonProjectileMesh", "material": {"name": "steel", "static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.12}, "force_analytic_proxy": true, "fit_dynamic_plan": false, "initial_position_m": [0.0, -0.58, 0.3434375], "initial_velocity_m_s": [0.0, 2.0, 2.4525]},
+    {
+      "id": "glass_panel", "role": "brittle_fracture_body", "shape": "thin_box", "size_m": [1.6, 0.02, 1.0], "collider": "actor", "collision_profile": "PhysicsActor", "mass_kg": 15.0, "asset_query": "GC_GlassPanelRadial", "enable_gravity": false, "fit_dynamic_plan": false, "intact_visual_ue_path": "/Engine/BasicShapes/Cube.Cube", "intact_visual_material_path": "/Game/DD_Vehicles_Advanced/Materials/Material_Instances/Glass/MI_DestructibleGlass.MI_DestructibleGlass", "intact_visual_scale": [1.6, 0.02, 1.0], "visual_material_path": "/Game/DD_Vehicles_Advanced/Materials/Material_Instances/Glass/MI_DestructibleGlass.MI_DestructibleGlass", "material": {"name": "glass", "static_friction": 0.35, "dynamic_friction": 0.25, "restitution": 0.12},
+      "fracture_response": {"mode": "contact_external_strain", "impactor_id": "steel_ball", "center_source": "native_contact_impact_point", "prefracture_pattern": "radial_voronoi", "damage_thresholds": [500000.0, 50000.0, 5000.0], "energy_response_levels": [
+        {"damage_state": "cracked", "minimum_impact_energy_j": 2.0, "external_strain": 525000.0, "radius_m": 0.08, "propagation_depth": 0, "propagation_factor": 0.0, "release_cluster": false},
+        {"damage_state": "shattered", "minimum_impact_energy_j": 10.0, "external_strain": 900000.0, "radius_m": 0.35, "propagation_depth": 2, "propagation_factor": 0.5, "release_cluster": true},
+        {"damage_state": "burst", "minimum_impact_energy_j": 25.0, "external_strain": 2500000.0, "radius_m": 1.0, "propagation_depth": 5, "propagation_factor": 1.0, "release_cluster": true, "radial_impulse_strength": 180.0, "radial_impulse_radius_m": 1.0}
+      ]},
+      "initial_position_m": [0.0, 0.0, 0.5], "initial_rotation_deg": [0.0, 0.0, 0.0], "initial_velocity_m_s": [0.0, 0.0, 0.0]
+    },
+    {"id": "impact_floor", "role": "support", "shape": "box", "size_m": [3.4, 2.8, 0.1], "collider": "box", "collision_profile": "BlockAll", "mass_kg": 100.0, "material": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.04}, "force_analytic_proxy": true, "fit_dynamic_plan": false, "initial_position_m": [0.0, 0.0, 0.0]}
+  ],
+  "active_objects": ["steel_ball"], "passive_objects": ["glass_panel"],
+  "required_assets": ["steel sphere visual", "harness-generated GC_GlassPanelRadial", "DD Vehicles MI_DestructibleGlass", "analytic support floor"],
+  "required_signals": ["trajectory", "native_collision_events", "impact_energy_j", "damage_state", "fracture_events", "camera_trajectory", "rgb", "depth", "instance_segmentation"],
+  "allowed_proxy_policy": "controlled_analytic_colliders_plus_local_preview_assets",
+  "verification_rules": ["initial_rigid_state_only", "ballistic_gravity_impact", "native_contact_required", "impact_centered_fracture", "measured_energy_response_selection", "native_impact_before_fracture", "no_scripted_fragment_trajectory"],
+  "verifier_expectation": {"status": "pass"}, "negative_or_boundary": false, "should_pass": true,
+  "notes": "Next-run diagnostic input. The ball follows a gravity-driven 0.25 s launch arc whose apex is the planned impact point. GC_GlassPanelRadial is pre-fractured around that planned point, while runtime strain is centered on the native UE contact point. This is impact-centered release of precomputed radial cells, not runtime topology creation."
+}

@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 from harness.core.artifact_schema import write_json
 from harness.runtime.render_pass_contract import verify_render_observability
 from harness.verification.physics_verifier import PhysicsVerifier
+from harness.verification.particle_cache_verifier import verify_particle_cache
 from harness.verification.render_sync_checker import check_render_sync
 
 
@@ -40,6 +41,34 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
 
     for run_dir in sorted(path for path in batch_dir.iterdir() if path.is_dir()):
+        particle_cache_path = run_dir / "particle_cache.json"
+        if particle_cache_path.exists():
+            cache = read_json_object(particle_cache_path)
+            report = verify_particle_cache(cache, root=run_dir)
+            backend_report = read_json_object(run_dir / "genesis_sph_backend_report.json")
+            video_exists = (run_dir / "video.mp4").is_file() and (run_dir / "video.mp4").stat().st_size > 0
+            if not video_exists:
+                report = dict(report)
+                report["status"] = "fail"
+                report["failure_codes"] = sorted(set(report.get("failure_codes", [])) | {"video_missing"})
+            rows.append(
+                {
+                    "run_dir": str(run_dir),
+                    "case_id": backend_report.get("case_id") or run_dir.name,
+                    "capability_id": backend_report.get("capability_id") or "fluid_particle_dynamics",
+                    "artifact_kind": "particle_surface_cache",
+                    "status": report["status"],
+                    "failure_type": (report.get("failure_codes") or [None])[0],
+                    "artifact_completeness": {
+                        "particle_cache": True,
+                        "surface_sequence": report["checks"]["surface_frame_count"] == report["checks"]["frame_count"],
+                        "video": video_exists,
+                    },
+                    "render_observability": {"status": "not_applicable", "failures": [], "reason": "solver surface preview, not UE sensor output"},
+                    "render_sync": {"status": "not_applicable", "failure_codes": []},
+                }
+            )
+            continue
         case_spec = run_dir / "case_spec.json"
         if not case_spec.exists():
             rows.append(
@@ -74,9 +103,11 @@ def main() -> int:
 
     failure_counts = Counter(str(row["failure_type"]) for row in rows if row.get("failure_type"))
     artifact_missing = sum(1 for row in rows if row.get("failure_type") == "artifact_missing")
-    trajectory_empty = sum(1 for row in rows if not (row.get("artifact_completeness") or {}).get("trajectory", False))
-    contact_missing = sum(1 for row in rows if not (row.get("artifact_completeness") or {}).get("contact_events_file", False))
-    render_missing = sum(1 for row in rows if not (row.get("artifact_completeness") or {}).get("render_manifest", False))
+    rigid_rows = [row for row in rows if row.get("artifact_kind") != "particle_surface_cache"]
+    fluid_rows = [row for row in rows if row.get("artifact_kind") == "particle_surface_cache"]
+    trajectory_empty = sum(1 for row in rigid_rows if not (row.get("artifact_completeness") or {}).get("trajectory", False))
+    contact_missing = sum(1 for row in rigid_rows if not (row.get("artifact_completeness") or {}).get("contact_events_file", False))
+    render_missing = sum(1 for row in rigid_rows if not (row.get("artifact_completeness") or {}).get("render_manifest", False))
     render_observability_fail = sum(1 for row in rows if (row.get("render_observability") or {}).get("failures"))
     summary = {
         "schema_version": "harness_batch_verifier_summary_v1",
@@ -92,6 +123,9 @@ def main() -> int:
             "contact_missing": contact_missing,
             "render_missing": render_missing,
             "render_observability_fail": render_observability_fail,
+            "particle_cache_missing": sum(1 for row in fluid_rows if not (row.get("artifact_completeness") or {}).get("particle_cache", False)),
+            "surface_sequence_incomplete": sum(1 for row in fluid_rows if not (row.get("artifact_completeness") or {}).get("surface_sequence", False)),
+            "fluid_video_missing": sum(1 for row in fluid_rows if not (row.get("artifact_completeness") or {}).get("video", False)),
         },
         "cases": rows,
     }
@@ -99,7 +133,18 @@ def main() -> int:
     write_json(batch_dir / "batch_verifier_summary.json", summary)
     write_json(batch_dir / "batch_render_report.json", render_report)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
-    return 0 if artifact_missing == 0 and render_observability_fail == 0 else 1
+    fluid_fail_count = sum(1 for row in rows if row.get("artifact_kind") == "particle_surface_cache" and row["status"] != "pass")
+    return 0 if artifact_missing == 0 and render_observability_fail == 0 and fluid_fail_count == 0 else 1
+
+
+def read_json_object(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def build_batch_render_report(rows: list[dict[str, Any]], *, batch_dir: Path) -> dict[str, Any]:
@@ -134,7 +179,7 @@ def build_batch_render_report(rows: list[dict[str, Any]], *, batch_dir: Path) ->
         "artifact_schema_version": "2.3",
         "batch_dir": str(batch_dir),
         "case_count": total,
-        "success_rate": round(sum(1 for row in rows if (row.get("render_sync") or {}).get("status") == "pass") / total, 6) if total else 0.0,
+        "success_rate": round(sum(1 for row in rows if row.get("status") == "pass") / total, 6) if total else 0.0,
         "depth_fail_rate": round(depth_fail_count / total, 6) if total else 0.0,
         "sync_fail_rate": round(sync_fail_count / total, 6) if total else 0.0,
         "avg_render_time": round(sum(float((row.get("render_sync") or {}).get("avg_render_time") or 0.0) for row in rows) / total, 6) if total else 0.0,

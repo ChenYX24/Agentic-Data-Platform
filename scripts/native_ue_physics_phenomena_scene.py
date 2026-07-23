@@ -15,6 +15,14 @@ import time
 import wave
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from harness.core.case_spec import fracture_center_from_contact, fracture_response_for_energy
+from harness.core.timebase import build_timebase
+from harness.runtime.camera_planner import DYNAMIC_CAMERA_FOLLOW_GAINS, DYNAMIC_CAMERA_PROFILE
+from harness.verification.render_sync_checker import depth_pixel_statistics
+
 STUDIO_TOOLS = Path(__file__).resolve().parents[1] / "simulator_studio" / "tools"
 if STUDIO_TOOLS.exists() and str(STUDIO_TOOLS) not in sys.path:
     sys.path.insert(0, str(STUDIO_TOOLS))
@@ -25,6 +33,12 @@ except Exception:
     validate_remote_path = None
 
 import unreal
+
+
+# StaticMesh replacement can clear per-component material overrides.  Keep the
+# render material outside physics_status because Unreal UObject instances are
+# intentionally not JSON serializable.
+SURFACE_REPLAY_MATERIALS = {}
 
 
 def env_int(name: str, default: int, min_value: int | None = None, max_value: int | None = None) -> int:
@@ -72,6 +86,9 @@ RENDER_QUALITY_PRESET = os.environ.get("RENDER_QUALITY_PRESET", "high").strip().
 RENDER_CAMERA_PRESET = os.environ.get("RENDER_CAMERA_PRESET", os.environ.get("CAMERA_PRESET", "")).strip().lower()
 RENDER_WARMUP_FRAMES = env_int("RENDER_WARMUP_FRAMES", 8, 0, 120)
 RENDER_VIEWPORT_SETTLE_SECONDS = env_float("RENDER_VIEWPORT_SETTLE_SECONDS", 2.0, 0.0, 30.0)
+RENDER_SURFACE_REPLAY_MATERIAL_WARMUP_SECONDS = env_float(
+    "RENDER_SURFACE_REPLAY_MATERIAL_WARMUP_SECONDS", 0.5, 0.0, 30.0
+)
 RENDER_FIRST_FRAME_STABILITY_SAMPLES = env_int("RENDER_FIRST_FRAME_STABILITY_SAMPLES", 2, 0, 12)
 RENDER_PER_FRAME_SETTLE_TICKS = env_int("RENDER_PER_FRAME_SETTLE_TICKS", 1, 0, 12)
 RENDER_SCREENSHOT_STABLE_TICKS = env_int("RENDER_SCREENSHOT_STABLE_TICKS", 3, 1, 20)
@@ -108,7 +125,7 @@ KEEP_RENDER_FRAMES = os.environ.get("KEEP_RENDER_FRAMES", "0") == "1"
 GENERATED_MATERIAL_VERSION = os.environ.get("GENERATED_MATERIAL_VERSION", "V24_FLAT_STATIC_AND_PHYSICS_MATERIALS")
 CHAOS_RIGID_BODY_SETUP = os.environ.get("CHAOS_RIGID_BODY_SETUP", "1") != "0"
 CHAOS_SIMULATION_ENABLED = os.environ.get("CHAOS_SIMULATION_ENABLED", "0") == "1"
-CONTROLLED_BOTTLE_STAGE = os.environ.get("CONTROLLED_BOTTLE_STAGE", "1") != "0"
+CONTROLLED_BOTTLE_STAGE = os.environ.get("CONTROLLED_BOTTLE_STAGE", "0") != "0"
 
 MAP_CANDIDATES = [
     {
@@ -845,6 +862,9 @@ def runtime_position(obj: dict, time_s: float, duration: float) -> tuple[list[fl
 
 
 def simulate_runtime_scene(runtime_scene: dict) -> list[dict]:
+    precomputed = runtime_scene.get("precomputed_trajectory")
+    if isinstance(precomputed, list) and precomputed:
+        return precomputed
     sim = runtime_scene.get("simulation") or {}
     fps = int(sim.get("fps") or FPS)
     duration = float(sim.get("duration_s") or DURATION)
@@ -1519,27 +1539,38 @@ def validate_runtime_scene(runtime_scene: dict, trajectory: list[dict]) -> dict:
         checks["periodic_sway"] = {"passed": bool(amplitudes) and max(amplitudes) >= 6.0, "values": amplitudes, "diagnostic": "plants rotate under periodic wind"}
     elif case_type == "bottle_domino_chain":
         rotations = {
-            oid: abs(final.get(oid, start)["rotation_degrees"][0])
+            oid: max(abs(float(value)) for value in final.get(oid, start)["rotation_degrees"][:3])
             for oid, start in first.items()
-            if oid.startswith("bottle_")
+            if oid.startswith("bottle_") or (oid.startswith("domino_") and oid != "domino_floor")
         }
+        def domino_order_key(oid):
+            prefix, separator, suffix = oid.rpartition("_")
+            return (prefix, int(suffix)) if separator and suffix.isdigit() else (oid, -1)
+
         starts = []
-        for oid in sorted(rotations):
+        ordered_ids = sorted(rotations, key=domino_order_key)
+        for oid in ordered_ids:
             threshold_frame = next(
                 (
                     frame
                     for frame in trajectory
-                    if oid in frame["objects"] and abs(frame["objects"][oid]["rotation_degrees"][0]) > 12.0
+                    if oid in frame["objects"]
+                    and max(abs(float(value)) for value in frame["objects"][oid]["rotation_degrees"][:3]) > 12.0
                 ),
                 None,
             )
             starts.append(threshold_frame["time"] if threshold_frame else None)
-        ordered = all(starts[idx] is not None and starts[idx + 1] is not None and starts[idx] <= starts[idx + 1] for idx in range(max(0, len(starts) - 1)))
+        ordered = all(
+            starts[idx] is not None
+            and starts[idx + 1] is not None
+            and starts[idx] < starts[idx + 1]
+            for idx in range(max(0, len(starts) - 1))
+        )
         checks["domino_order"] = {
             "passed": len(rotations) >= 3 and min(rotations.values()) > 45.0 and ordered,
             "final_rotations": rotations,
             "tip_start_times": starts,
-            "diagnostic": "bottles tip into final tilted poses in left-to-right order",
+            "diagnostic": "domino objects tip into final tilted poses in left-to-right order",
         }
     elif case_type == "wheel_ramp_jump":
         wheel_id = "wheel_1"
@@ -2050,7 +2081,7 @@ def select_map(description: str) -> dict:
         return {"name": "StudioRuntimeBlank", "path": "", "tags": (), "base_score": 0, "selection_reason": "studio_runtime_no_legacy_map"}
     if SCENE_MAP and SCENE_MAP != "auto":
         for candidate in MAP_CANDIDATES:
-            if SCENE_MAP in (candidate["name"], candidate["path"]):
+            if SCENE_MAP == candidate["name"] or canonical_map_package(SCENE_MAP) == canonical_map_package(candidate["path"]):
                 return {**candidate, "selection_reason": "explicit_scene_map"}
         return {"name": "custom", "path": SCENE_MAP, "tags": (), "base_score": 0, "selection_reason": "explicit_custom_scene_map"}
 
@@ -2069,42 +2100,49 @@ def select_map(description: str) -> dict:
     return {**selected, "score": best_score, "selection_reason": "agent_rule_score"}
 
 
-def try_open_map(path: str) -> tuple[bool, str | None]:
+def canonical_map_package(path: str | None) -> str:
+    value = str(path or "").strip().split(":", 1)[0]
+    dot = value.find(".", value.rfind("/"))
+    return value[:dot] if dot >= 0 else value.rstrip("/")
+
+
+def current_world_package() -> str | None:
     try:
-        return bool(unreal.EditorLevelLibrary.load_level(path)), None
-    except Exception as exc:
-        error = str(exc)
+        world = unreal.EditorLevelLibrary.get_editor_world()
+        return canonical_map_package(world.get_path_name()) if world else None
+    except Exception:
+        return None
+
+
+def try_open_map(path: str) -> tuple[bool, str | None]:
+    requested = canonical_map_package(path)
+    errors = []
+    for loader in (unreal.EditorLevelLibrary.load_level, unreal.EditorLoadingAndSavingUtils.load_map):
         try:
-            return bool(unreal.EditorLoadingAndSavingUtils.load_map(path)), error
-        except Exception as fallback_exc:
-            return False, f"{error}; fallback={fallback_exc}"
+            loader(path)
+        except Exception as exc:
+            errors.append(str(exc))
+        actual = current_world_package()
+        if actual == requested:
+            return True, None
+        errors.append(f"loaded_world_mismatch:requested={requested},actual={actual}")
+    return False, "; ".join(errors)
 
 
 def open_selected_map() -> dict:
     selected = select_map(SCENE_DESCRIPTION)
     if selected.get("name") == "StudioRuntimeBlank":
         selected["opened"] = False
+        selected["requested_package"] = None
+        selected["opened_package"] = current_world_package()
         selected["error"] = None
         selected["fallback_map"] = None
         return selected
     opened, error = try_open_map(selected["path"])
     selected["opened"] = opened
+    selected["requested_package"] = canonical_map_package(selected["path"])
+    selected["opened_package"] = current_world_package()
     selected["error"] = error
-    if opened:
-        selected["fallback_map"] = None
-        return selected
-    for candidate in MAP_CANDIDATES:
-        if candidate["path"] == selected["path"]:
-            continue
-        fallback_opened, fallback_error = try_open_map(candidate["path"])
-        if fallback_opened:
-            return {
-                **candidate,
-                "opened": True,
-                "error": fallback_error,
-                "selection_reason": "fallback_after_selected_map_failed",
-                "attempted_map": selected,
-            }
     selected["fallback_map"] = None
     return selected
 
@@ -2124,17 +2162,16 @@ def ensure_selected_map_has_actors(editor, selected_map: dict) -> dict:
     if not path:
         return selected_map
     reload_errors = []
-    try:
-        reloaded = bool(unreal.EditorLoadingAndSavingUtils.load_map(path))
-        selected_map["force_reloaded_after_empty_actor_list"] = reloaded
-    except Exception as exc:
-        reload_errors.append(str(exc))
-        reloaded = False
+    reloaded, reload_error = try_open_map(path)
+    selected_map["force_reloaded_after_empty_actor_list"] = reloaded
+    if reload_error:
+        reload_errors.append(reload_error)
     after = count_non_demo_actors(editor)
     selected_map["actor_count_after_force_reload"] = after
+    selected_map["opened_package"] = current_world_package()
     if reload_errors:
         selected_map["force_reload_errors"] = reload_errors
-    selected_map["opened"] = bool(reloaded or after > 0)
+    selected_map["opened"] = bool(reloaded)
     return selected_map
 
 
@@ -2479,8 +2516,19 @@ def runtime_physics_controls(runtime_scene: dict | None) -> dict:
     elif controls["simulate_physics"]:
         controls["simulation_driver"] = "ue_chaos_rigid_body"
     else:
-        controls["simulation_driver"] = "scripted_trajectory_replay_with_collision_shapes"
-    controls["deterministic_replay_fallback"] = not controls["simulate_physics"]
+        controls["simulation_driver"] = controls.get("simulation_driver") or "scripted_trajectory_replay_with_collision_shapes"
+    solver_output_replay = (
+        not controls["simulate_physics"]
+        and controls.get("runtime_driver_backend") == "precomputed_trajectory"
+        and controls.get("trajectory_source") in {
+            "adp_cpp_runtime_driver",
+            "ue_chaos_transform_capture",
+            "mujoco_rigid",
+            "genesis_sph",
+        }
+    )
+    controls["replay_kind"] = "live_solver" if controls["simulate_physics"] else ("solver_output_render_cache" if solver_output_replay else "fallback_or_scripted")
+    controls["deterministic_replay_fallback"] = not controls["simulate_physics"] and not solver_output_replay
     return controls
 
 
@@ -2571,7 +2619,13 @@ def spawn_static_mesh(label: str, mesh_path: str, location: unreal.Vector, scale
         pass
     actor.static_mesh_component.set_world_scale3d(scale)
     if material_path:
-        actor.static_mesh_component.set_material(0, load_asset(material_path))
+        material = load_asset(material_path)
+        try:
+            material_count = max(1, int(actor.static_mesh_component.get_num_materials()))
+        except Exception:
+            material_count = 1
+        for material_index in range(material_count):
+            actor.static_mesh_component.set_material(material_index, material)
     if rotation:
         actor.set_actor_rotation(rotation, False)
     return actor
@@ -2582,7 +2636,7 @@ def actor_runtime_component(actor):
         component = getattr(actor, attr, None)
         if component:
             return component
-    for cls_name in ("StaticMeshComponent", "SkeletalMeshComponent"):
+    for cls_name in ("GeometryCollectionComponent", "StaticMeshComponent", "SkeletalMeshComponent"):
         cls = getattr(unreal, cls_name, None)
         if not cls:
             continue
@@ -2595,9 +2649,462 @@ def actor_runtime_component(actor):
     return None
 
 
+def sync_runtime_visuals(actors: dict) -> None:
+    for actor_id, visual in (actors.get("visual_actors") or {}).items():
+        physics_actor = actors.get(actor_id)
+        if not physics_actor or not visual:
+            continue
+        try:
+            visual.set_actor_location(physics_actor.get_actor_location(), False, False)
+            visual.set_actor_rotation(physics_actor.get_actor_rotation(), False)
+        except Exception:
+            pass
+
+
+def apply_surface_mesh_sequence_replay(
+    actors: dict,
+    runtime_scene: dict | None,
+    frame_index: int,
+    physics_status: dict,
+) -> None:
+    """Swap derived fluid surface meshes at the render-frame seam."""
+    if not runtime_scene:
+        return
+    replay_status = physics_status.setdefault(
+        "surface_mesh_sequence_replay",
+        {"frames": [], "errors": [], "state_truth_role": "derived_render_representation"},
+    )
+    objects = (runtime_scene.get("dynamic_objects") or []) + (runtime_scene.get("static_objects") or [])
+    for obj in objects:
+        params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
+        sequence = params.get("surface_mesh_sequence")
+        if not isinstance(sequence, list) or not sequence:
+            continue
+        object_id = str(obj.get("id") or "")
+        actor = actors.get(object_id)
+        if not actor:
+            replay_status["errors"].append({"frame": frame_index, "object_id": object_id, "error": "actor_missing"})
+            continue
+        mesh_path = str(sequence[min(frame_index, len(sequence) - 1)] or "")
+        mesh = unreal.load_asset(mesh_path)
+        component = actor_runtime_component(actor)
+        if not mesh or not component or not hasattr(component, "set_static_mesh"):
+            replay_status["errors"].append(
+                {"frame": frame_index, "object_id": object_id, "mesh_path": mesh_path, "error": "static_mesh_unavailable"}
+            )
+            continue
+        try:
+            if object_id not in SURFACE_REPLAY_MATERIALS:
+                try:
+                    SURFACE_REPLAY_MATERIALS[object_id] = component.get_material(0)
+                except Exception:
+                    SURFACE_REPLAY_MATERIALS[object_id] = None
+            component.set_mobility(unreal.ComponentMobility.MOVABLE)
+            component.set_static_mesh(mesh)
+            set_editor_property_if_available(component, "disallow_nanite", True)
+            replay_material = SURFACE_REPLAY_MATERIALS.get(object_id)
+            if replay_material:
+                component.set_material(0, replay_material)
+            for method_name in ("update_bounds", "mark_render_state_dirty", "mark_render_transform_dirty"):
+                method = getattr(component, method_name, None)
+                if method:
+                    try:
+                        method()
+                    except Exception:
+                        pass
+            try:
+                component.set_visibility(True, True)
+                component.set_hidden_in_game(False, True)
+            except Exception:
+                pass
+            try:
+                actual_material = component.get_material(0)
+            except Exception:
+                actual_material = None
+            component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+            component.set_simulate_physics(False)
+            replay_status["frames"].append(
+                {
+                    "frame": frame_index,
+                    "object_id": object_id,
+                    "mesh_path": mesh_path,
+                    "applied": True,
+                    "material_preserved": replay_material is not None,
+                    "material_name": replay_material.get_name() if replay_material and hasattr(replay_material, "get_name") else None,
+                    "actual_material_name": actual_material.get_name() if actual_material and hasattr(actual_material, "get_name") else None,
+                    "mobility": "MOVABLE",
+                }
+            )
+        except Exception as exc:
+            replay_status["errors"].append(
+                {"frame": frame_index, "object_id": object_id, "mesh_path": mesh_path, "error": str(exc)}
+            )
+
+
+def geometry_collection_fragment_state(actor) -> tuple[dict | None, str | None, str | None]:
+    library = getattr(unreal, "ADPPhysicsRuntimeLibrary", None)
+    capture = getattr(library, "capture_geometry_collection_fragment_state", None) if library else None
+    if not capture or not actor:
+        return None, None, "fragment_state_export_unavailable"
+    try:
+        raw = capture(actor)
+        payload = json.loads(raw) if raw else None
+        if not isinstance(payload, dict) or not isinstance(payload.get("fragments"), list):
+            return None, None, "fragment_state_export_empty"
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return payload, hashlib.sha256(canonical.encode("utf-8")).hexdigest(), None
+    except Exception as exc:
+        return None, None, f"fragment_state_export_failed:{exc}"
+
+
+def apply_geometry_collection_fracture_response(
+    actors: dict,
+    runtime_scene: dict | None,
+    contact_events: list[dict],
+    frame_index: int,
+    physics_status: dict,
+) -> None:
+    if not runtime_scene:
+        return
+    status = physics_status.setdefault(
+        "geometry_collection_fracture",
+        {"commands": [], "break_events": [], "fragment_frames": [], "root_broken": {}, "energy_checks": []},
+    )
+    status.setdefault("energy_checks", [])
+    kinematics = status.setdefault("impactor_kinematics", {})
+    commanded = {str(row.get("target_id")) for row in status["commands"]}
+    for obj in (runtime_scene.get("dynamic_objects") or []) + (runtime_scene.get("static_objects") or []):
+        response = (obj.get("params") or {}).get("fracture_response")
+        if not isinstance(response, dict):
+            continue
+        target_id = str(obj.get("id") or "")
+        target_actor = actors.get(target_id)
+        component_class = getattr(unreal, "GeometryCollectionComponent", None)
+        component = target_actor.get_component_by_class(component_class) if target_actor and component_class else None
+        if not component:
+            continue
+        try:
+            broken = bool(component.is_root_broken())
+        except Exception:
+            broken = False
+        was_broken = bool(status["root_broken"].get(target_id))
+        status["root_broken"][target_id] = broken
+        fragment_state = None
+        fragment_state_sha256 = None
+        fragment_state_error = None
+        if broken:
+            fragment_state, fragment_state_sha256, fragment_state_error = geometry_collection_fragment_state(target_actor)
+            status.setdefault("fragment_frames", []).append(
+                {
+                    "frame": frame_index,
+                    "target_id": target_id,
+                    "fragment_state": fragment_state,
+                    "fragment_state_sha256": fragment_state_sha256,
+                    "fragment_state_error": fragment_state_error,
+                }
+            )
+        if broken and not was_broken:
+            status["break_events"].append(
+                {
+                    "frame": frame_index,
+                    "target_id": target_id,
+                    "source": "GeometryCollectionComponent.is_root_broken",
+                    "fragment_state": fragment_state,
+                    "fragment_state_sha256": fragment_state_sha256,
+                    "fragment_state_error": fragment_state_error,
+                }
+            )
+        impactor_id = str(response.get("impactor_id") or "")
+        pair = {target_id, impactor_id}
+        contact = next(
+            (
+                event
+                for event in contact_events
+                if set(event.get("objects") or []) == pair
+                and (event.get("native_collision") is True or event.get("method") == "ue_native_component_hit")
+            ),
+            None,
+        )
+        if target_id in commanded or broken:
+            continue
+        impactor = actors.get(impactor_id)
+        if not impactor:
+            continue
+        impactor_component = actor_runtime_component(impactor)
+        try:
+            mass_kg = float(impactor_component.get_mass())
+            impactor_velocity = impactor_component.get_physics_linear_velocity()
+        except Exception as exc:
+            if contact:
+                status["energy_checks"].append({"frame": frame_index, "target_id": target_id, "impactor_id": impactor_id, "passed": False, "error": f"native_impactor_energy_unavailable:{exc}"})
+            continue
+        velocity_m_s = [float(impactor_velocity.x) / 100.0, float(impactor_velocity.y) / 100.0, float(impactor_velocity.z) / 100.0]
+        sample_key = f"{impactor_id}:{target_id}"
+        current_sample = {"frame": frame_index, "mass_kg": mass_kg, "velocity_m_s": velocity_m_s}
+        energy_sample = kinematics.get(sample_key)
+        kinematics[sample_key] = current_sample
+        if not contact:
+            continue
+        if energy_sample is None:
+            status["energy_checks"].append(
+                {
+                    "frame": frame_index,
+                    "target_id": target_id,
+                    "impactor_id": impactor_id,
+                    "passed": False,
+                    "external_strain_applied": False,
+                    "error": "precontact_impactor_sample_unavailable",
+                }
+            )
+            continue
+        mass_kg = float(energy_sample["mass_kg"])
+        velocity_m_s = list(energy_sample["velocity_m_s"])
+        speed_squared = sum(value * value for value in velocity_m_s)
+        impact_speed_m_s = speed_squared ** 0.5
+        impact_energy_j = 0.5 * max(0.0, mass_kg) * speed_squared
+        selected_response = fracture_response_for_energy(response, impact_energy_j)
+        levels = response.get("energy_response_levels")
+        if isinstance(levels, list):
+            minimum_impact_energy_j = (
+                max(0.0, float(selected_response.get("minimum_impact_energy_j") or 0.0))
+                if selected_response
+                else min(max(0.0, float(level.get("minimum_impact_energy_j") or 0.0)) for level in levels)
+            )
+            energy_gate_passed = selected_response is not None
+        else:
+            selected_response = selected_response or response
+            minimum_impact_energy_j = max(0.0, float(response.get("minimum_impact_energy_j") or 0.0))
+            energy_gate_passed = impact_energy_j >= minimum_impact_energy_j
+        damage_state = str((selected_response or {}).get("damage_state") or "") or None
+        contact["impactor_mass_kg"] = round(mass_kg, 6)
+        contact["impact_speed_m_s"] = round(impact_speed_m_s, 6)
+        contact["impact_energy_j"] = round(impact_energy_j, 6)
+        contact["minimum_impact_energy_j"] = minimum_impact_energy_j
+        contact["energy_model"] = "ue_component_precontact_sample_translational_energy"
+        contact["energy_sample_frame"] = int(energy_sample["frame"])
+        contact["energy_gate_passed"] = energy_gate_passed
+        contact["external_strain_applied"] = False
+        contact["damage_state"] = damage_state
+        energy_check = {
+            "frame": frame_index,
+            "energy_sample_frame": int(energy_sample["frame"]),
+            "target_id": target_id,
+            "impactor_id": impactor_id,
+            "impactor_mass_kg": round(mass_kg, 6),
+            "impact_speed_m_s": round(impact_speed_m_s, 6),
+            "impact_energy_j": round(impact_energy_j, 6),
+            "minimum_impact_energy_j": minimum_impact_energy_j,
+            "energy_model": "ue_component_precontact_sample_translational_energy",
+            "passed": contact["energy_gate_passed"],
+            "external_strain_applied": False,
+            "damage_state": damage_state,
+        }
+        status["energy_checks"].append(energy_check)
+        if not energy_check["passed"]:
+            continue
+        try:
+            root_index = int(component.get_root_index())
+            fallback_location_cm = vector_payload(impactor.get_actor_location())
+            location_cm, location_source = fracture_center_from_contact(contact, fallback_location_cm)
+            if response.get("center_source") == "native_contact_impact_point" and location_source != "native_contact_impact_point":
+                energy_check["external_strain_applied"] = False
+                energy_check["error"] = "native_contact_impact_point_unavailable"
+                status.setdefault("errors", []).append(f"{target_id}:native_contact_impact_point_unavailable")
+                continue
+            location = unreal.Vector(*location_cm)
+            radius_cm = max(1.0, float(selected_response.get("radius_m", 0.5)) * 100.0)
+            strain = max(0.0, float(selected_response.get("external_strain", 0.0)))
+            component.apply_external_strain(
+                root_index,
+                location,
+                radius_cm,
+                max(0, int(selected_response.get("propagation_depth", 2))),
+                max(0.0, float(selected_response.get("propagation_factor", 0.5))),
+                strain,
+            )
+            visual_actor = (actors.get("visual_actors") or {}).get(target_id)
+            if visual_actor:
+                visual_actor.set_actor_hidden_in_game(True)
+                visual_component = actor_runtime_component(visual_actor)
+                if visual_component:
+                    visual_component.set_visibility(False, True)
+                target_actor.set_actor_hidden_in_game(False)
+                component.set_visibility(True, True)
+                component.set_hidden_in_game(False, True)
+            cluster_release_requested = bool(selected_response.get("release_cluster"))
+            cluster_released = False
+            if cluster_release_requested:
+                component.crumble_cluster(root_index)
+                component.set_enable_gravity(True)
+                cluster_released = True
+            radial_impulse_strength = max(0.0, float(selected_response.get("radial_impulse_strength") or 0.0))
+            radial_impulse_applied = False
+            if radial_impulse_strength > 0.0:
+                try:
+                    component.add_radial_impulse(
+                        location,
+                        max(radius_cm, float(selected_response.get("radial_impulse_radius_m", 1.0)) * 100.0),
+                        radial_impulse_strength,
+                        unreal.RadialImpulseFalloff.RIF_LINEAR,
+                        True,
+                    )
+                    radial_impulse_applied = True
+                except Exception as exc:
+                    status.setdefault("errors", []).append(f"{target_id}:radial_impulse:{exc}")
+            contact["external_strain_applied"] = True
+            contact["cluster_released"] = cluster_released
+            contact["radial_impulse_applied"] = radial_impulse_applied
+            energy_check["external_strain_applied"] = True
+            energy_check["cluster_released"] = cluster_released
+            energy_check["radial_impulse_applied"] = radial_impulse_applied
+            status["commands"].append(
+                {
+                    "frame": frame_index,
+                    "target_id": target_id,
+                    "impactor_id": impactor_id,
+                    "root_index": root_index,
+                    "location_cm": vector_payload(location),
+                    "location_source": location_source,
+                    "radius_cm": radius_cm,
+                    "external_strain": strain,
+                    "impact_energy_j": round(impact_energy_j, 6),
+                    "energy_sample_frame": int(energy_sample["frame"]),
+                    "minimum_impact_energy_j": minimum_impact_energy_j,
+                    "damage_state": damage_state,
+                    "cluster_release_requested": cluster_release_requested,
+                    "cluster_released": cluster_released,
+                    "radial_impulse_strength": radial_impulse_strength,
+                    "radial_impulse_applied": radial_impulse_applied,
+                    "source_contact": contact,
+                }
+            )
+        except Exception as exc:
+            status.setdefault("errors", []).append(f"{target_id}:{exc}")
+
+
+def attach_geometry_collection_fracture_events(trajectory: list[dict], physics_status: dict) -> list[dict]:
+    status = physics_status.get("geometry_collection_fracture") or {}
+    commands = {str(row.get("target_id")): row for row in status.get("commands") or []}
+    events = []
+    by_frame = {int(frame.get("frame") or 0): frame for frame in trajectory}
+    fragment_trajectory = []
+    for sample in status.get("fragment_frames") or []:
+        frame_index = int(sample.get("frame") or 0)
+        target_id = str(sample.get("target_id") or "")
+        payload = sample.get("fragment_state") if isinstance(sample.get("fragment_state"), dict) else {}
+        fragments = []
+        for row in payload.get("fragments") or []:
+            if not isinstance(row, dict) or "index" not in row:
+                continue
+            transform_index = int(row["index"])
+            fragments.append(
+                {
+                    "fragment_id": f"{target_id}:transform_{transform_index}",
+                    "source_object_id": target_id,
+                    "transform_index": transform_index,
+                    "position_cm": row.get("location_cm"),
+                    "rotation_xyzw": row.get("rotation_xyzw"),
+                    "source": "ue_geometry_collection_component_space",
+                }
+            )
+        frame = by_frame.get(frame_index)
+        if frame is not None and fragments:
+            frame.setdefault("fragments", []).extend(fragments)
+        fragment_trajectory.append(
+            {
+                "frame": frame_index,
+                "object_id": target_id,
+                "fragment_count": len(fragments),
+                "fragment_state_sha256": sample.get("fragment_state_sha256"),
+                "fragment_state_error": sample.get("fragment_state_error"),
+                "fragments": fragments,
+            }
+        )
+    (OUTPUT_DIR / "fragment_trajectory.json").write_text(json.dumps(fragment_trajectory, indent=2), encoding="utf-8")
+    for check in status.get("energy_checks") or []:
+        frame = by_frame.get(int(check.get("frame") or 0))
+        pair = {str(check.get("target_id") or ""), str(check.get("impactor_id") or "")}
+        contact = next(
+            (row for row in (frame or {}).get("contacts") or [] if set(row.get("objects") or []) == pair),
+            None,
+        )
+        if contact is not None:
+            contact.update({
+                "impactor_mass_kg": check.get("impactor_mass_kg"),
+                "impact_speed_m_s": check.get("impact_speed_m_s"),
+                "impact_energy_j": check.get("impact_energy_j"),
+                "energy_sample_frame": check.get("energy_sample_frame"),
+                "minimum_impact_energy_j": check.get("minimum_impact_energy_j"),
+                "energy_model": check.get("energy_model"),
+                "energy_gate_passed": bool(check.get("passed")),
+                "external_strain_applied": bool(check.get("external_strain_applied")),
+                "damage_state": check.get("damage_state"),
+                "cluster_released": bool(check.get("cluster_released")),
+                "radial_impulse_applied": bool(check.get("radial_impulse_applied")),
+            })
+    for observed in status.get("break_events") or []:
+        frame_index = int(observed.get("frame") or 0)
+        target_id = str(observed.get("target_id") or "")
+        command = commands.get(target_id) or {}
+        event = {
+            "event_type": "fracture",
+            "object_id": target_id,
+            "frame": frame_index,
+            "time_s": round(frame_index / max(FPS, 1), 6),
+            "source": "ue_geometry_collection_root_state",
+            "root_broken": True,
+            "native_break_event": True,
+            "command_frame": command.get("frame"),
+            "root_index": command.get("root_index"),
+            "fracture_center_cm": command.get("location_cm"),
+            "fracture_center_source": command.get("location_source"),
+            "external_strain": command.get("external_strain"),
+            "impact_energy_j": command.get("impact_energy_j"),
+            "energy_sample_frame": command.get("energy_sample_frame"),
+            "minimum_impact_energy_j": command.get("minimum_impact_energy_j"),
+            "damage_state": command.get("damage_state"),
+            "cluster_released": bool(command.get("cluster_released")),
+            "radial_impulse_strength": command.get("radial_impulse_strength"),
+            "radial_impulse_applied": bool(command.get("radial_impulse_applied")),
+            "fragment_state": observed.get("fragment_state"),
+            "fragment_state_sha256": observed.get("fragment_state_sha256"),
+            "fragment_state_error": observed.get("fragment_state_error"),
+            "fragment_count": int((observed.get("fragment_state") or {}).get("fragment_count") or 0),
+            "damage_thresholds_runtime": (observed.get("fragment_state") or {}).get("damage_thresholds_runtime") or [],
+            "damage_threshold_source": (observed.get("fragment_state") or {}).get("damage_threshold_source"),
+            "source_contact": command.get("source_contact"),
+        }
+        events.append(event)
+        frame = by_frame.get(frame_index)
+        if frame is not None:
+            frame.setdefault("fracture_events", []).append(event)
+    (OUTPUT_DIR / "fracture_events.json").write_text(json.dumps(events, indent=2), encoding="utf-8")
+    return events
+
+
 def spawn_runtime_actor(label: str, asset_path: str, asset_kind: str, location: unreal.Vector, scale: unreal.Vector, material_path: str | None = None, rotation=None):
     subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     asset_kind = str(asset_kind or "").lower()
+    if asset_kind in {"geometrycollection", "geometry_collection"}:
+        asset = load_asset(asset_path)
+        actor = subsystem.spawn_actor_from_class(unreal.GeometryCollectionActor, location)
+        if not actor:
+            raise RuntimeError(f"failed to spawn Geometry Collection actor: {asset_path}")
+        actor.set_actor_label(label)
+        component = actor_runtime_component(actor)
+        if not component:
+            raise RuntimeError(f"missing Geometry Collection component: {asset_path}")
+        component.set_rest_collection(asset, True)
+        try:
+            component.set_mobility(unreal.ComponentMobility.MOVABLE)
+        except Exception:
+            pass
+        component.set_world_scale3d(scale)
+        if material_path:
+            component.set_material(0, load_asset(material_path))
+        if rotation:
+            actor.set_actor_rotation(rotation, False)
+        return actor
     if asset_kind == "skeletal_mesh" and hasattr(unreal, "SkeletalMeshActor"):
         try:
             asset = load_asset(asset_path)
@@ -2640,9 +3147,18 @@ def spawn_runtime_actor(label: str, asset_path: str, asset_kind: str, location: 
             proxy_scale = unreal.Vector(max(0.25, float(scale.x) * 0.55), max(0.25, float(scale.y) * 0.55), max(0.25, float(scale.z) * 1.95))
             return spawn_static_mesh(label, proxy_mesh, location, proxy_scale, material_path=material_path, rotation=rotation)
     if asset_kind == "blueprint":
-        proxy_mesh = "/Engine/BasicShapes/Cube.Cube"
-        proxy_scale = unreal.Vector(max(0.25, float(scale.x) * 0.55), max(0.25, float(scale.y) * 0.55), max(0.25, float(scale.z) * 1.95))
-        return spawn_static_mesh(label, proxy_mesh, location, proxy_scale, material_path=material_path, rotation=rotation)
+        blueprint_path = str(asset_path).rsplit(".", 1)[0]
+        actor_class = unreal.EditorAssetLibrary.load_blueprint_class(blueprint_path)
+        if not actor_class:
+            raise RuntimeError(f"failed to load blueprint class: {asset_path}")
+        actor = subsystem.spawn_actor_from_class(actor_class, location)
+        if not actor:
+            raise RuntimeError(f"failed to spawn blueprint actor: {asset_path}")
+        actor.set_actor_label(label)
+        actor.set_actor_scale3d(unreal.Vector(1.0, 1.0, 1.0))
+        if rotation:
+            actor.set_actor_rotation(rotation, False)
+        return actor
     asset = load_asset(asset_path)
     return spawn_static_mesh(label, asset_path, location, scale, material_path=material_path, rotation=rotation)
 
@@ -2698,6 +3214,7 @@ def configure_runtime_physics(actor, obj: dict, role: str, controls: dict | None
     if properties.get("simulate_physics") in ("force_off", "force_off_until_release", "disabled"):
         role_simulate = False
     role_gravity = bool_control(properties.get("enable_gravity"), bool(controls.get("gravity_enabled", True)))
+    use_ccd = bool_control(properties.get("use_ccd"), False)
     detail = {
         "id": obj.get("id"),
         "role": role,
@@ -2710,6 +3227,7 @@ def configure_runtime_physics(actor, obj: dict, role: str, controls: dict | None
         "collision_profile": None,
         "simulate_physics": False,
         "enable_gravity": role_gravity,
+        "use_ccd": use_ccd,
         "physics_properties": properties,
         "errors": [],
     }
@@ -2717,6 +3235,15 @@ def configure_runtime_physics(actor, obj: dict, role: str, controls: dict | None
     if not component:
         detail["errors"].append("missing_static_mesh_component")
         return detail
+    fracture_response = (obj.get("params") or {}).get("fracture_response")
+    damage_thresholds = fracture_response.get("damage_thresholds") if isinstance(fracture_response, dict) else None
+    if isinstance(damage_thresholds, list) and damage_thresholds:
+        values = [float(value) for value in damage_thresholds]
+        try:
+            component.set_editor_property("damage_threshold", values)
+            detail["damage_thresholds"] = values
+        except Exception as property_exc:
+            detail["errors"].append(f"damage_thresholds:{property_exc}")
     try:
         component.set_mobility(unreal.ComponentMobility.MOVABLE if role == "dynamic" else unreal.ComponentMobility.STATIC)
         detail["mobility"] = "MOVABLE" if role == "dynamic" else "STATIC"
@@ -2756,6 +3283,12 @@ def configure_runtime_physics(actor, obj: dict, role: str, controls: dict | None
         component.set_enable_gravity(role_gravity)
     except Exception as exc:
         detail["errors"].append(f"gravity:{exc}")
+    if should_simulate and use_ccd:
+        try:
+            component.set_use_ccd(True)
+            detail["use_ccd"] = True
+        except Exception as exc:
+            detail["errors"].append(f"use_ccd:{exc}")
     if controls.get("apply_mass", True) and properties.get("mass_kg"):
         try:
             component.set_mass_override_in_kg("", float(properties["mass_kg"]), True)
@@ -3314,7 +3847,18 @@ def remove_map_actors_for_controlled_case(editor, selected_map: dict, case_type:
                 removed.append({"label": label, "mesh": mesh_path})
                 editor.destroy_actor(actor)
         return [{"mode": "runtime_remove_map_actor_terms", "terms": removal_terms, "removed_count": len(removed), "sample_removed_actors": removed[:24]}]
-    if selected_map.get("name") != "MarketEnvironment_Day" or case_type != "bottle_domino_chain" or not CONTROLLED_BOTTLE_STAGE:
+    physics_controls = (runtime_scene or {}).get("physics_controls") if isinstance(runtime_scene, dict) else {}
+    formal_initial_state_only = (
+        isinstance(physics_controls, dict)
+        and physics_controls.get("input_mode") == "initial_state_only"
+        and physics_controls.get("state_solver") == "ue_chaos"
+    )
+    if (
+        selected_map.get("name") != "MarketEnvironment_Day"
+        or case_type != "bottle_domino_chain"
+        or not CONTROLLED_BOTTLE_STAGE
+        or formal_initial_state_only
+    ):
         return []
     removed_count = 0
     samples = []
@@ -3490,7 +4034,9 @@ def runtime_desired_extent_cm(obj: dict) -> float:
         try:
             structural_behaviors = {"landing_surface", "room_floor", "room_wall", "room_ceiling"}
             cap_cm = 900.0 if obj.get("behavior") in structural_behaviors else 420.0
-            min_cm = 2.0 if obj.get("behavior") == "llm_rigid_body" else 24.0
+            role = str(params.get("role") or "").casefold()
+            compact_analytic_role = role in {"constraint_anchor", "elastic_constraint_anchor", "elastic_constrained_body"}
+            min_cm = 2.0 if obj.get("behavior") == "llm_rigid_body" or compact_analytic_role else 24.0
             return max(min_cm, min(cap_cm, float(explicit_extent)))
         except Exception:
             pass
@@ -3571,20 +4117,27 @@ def runtime_desired_extent_cm(obj: dict) -> float:
 
 def normalize_runtime_actor(actor, obj: dict) -> tuple[unreal.Vector, unreal.Vector]:
     origin, extent = actor_bounds(actor)
+    params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
+    if params.get("preserve_authored_scale") is True:
+        return origin, extent
     current_extent = max_axis(extent)
     if current_extent > 0.01:
         factor = max(0.02, min(100.0, runtime_desired_extent_cm(obj) / current_extent))
-        component = actor_runtime_component(actor)
-        if not component:
-            return origin, extent
-        try:
-            scale = component.get_component_scale()
-        except Exception:
+        if str(obj.get("asset_kind") or "").casefold() == "blueprint":
+            scale = actor.get_actor_scale3d()
+            actor.set_actor_scale3d(unreal.Vector(scale.x * factor, scale.y * factor, scale.z * factor))
+        else:
+            component = actor_runtime_component(actor)
+            if not component:
+                return origin, extent
             try:
-                scale = component.get_editor_property("relative_scale3d")
+                scale = component.get_component_scale()
             except Exception:
-                scale = unreal.Vector(1.0, 1.0, 1.0)
-        component.set_world_scale3d(unreal.Vector(scale.x * factor, scale.y * factor, scale.z * factor))
+                try:
+                    scale = component.get_editor_property("relative_scale3d")
+                except Exception:
+                    scale = unreal.Vector(1.0, 1.0, 1.0)
+            component.set_world_scale3d(unreal.Vector(scale.x * factor, scale.y * factor, scale.z * factor))
         origin, extent = actor_bounds(actor)
     return origin, extent
 
@@ -3833,6 +4386,20 @@ def runtime_camera_pose(runtime_scene: dict, runtime_actors: dict, selected_map:
     case_type = runtime_scene.get("case_type")
     camera = runtime_scene.get("camera") if isinstance(runtime_scene.get("camera"), dict) else {}
     camera_mode = str(camera.get("mode") or "").strip().lower()
+    if camera_mode in {"fixed", "static", "trajectory"}:
+        waypoints = camera.get("preview_waypoints") if isinstance(camera.get("preview_waypoints"), list) else []
+        waypoint = waypoints[min(len(waypoints) - 1, len(waypoints) // 2)] if waypoints else {}
+        position = waypoint.get("position_m") if isinstance(waypoint, dict) else None
+        if not (isinstance(position, list) and len(position) >= 3):
+            position = camera.get("location")
+        if isinstance(position, list) and len(position) >= 3:
+            target_offset = waypoint.get("target_offset_m") if isinstance(waypoint, dict) else None
+            if not (isinstance(target_offset, list) and len(target_offset) >= 3):
+                target_offset = camera.get("target_offset_m") or [0.0, 0.0, 0.8]
+            origin = scene_origin or unreal.Vector(0.0, 0.0, 0.0)
+            location = origin + unreal.Vector(float(position[0]) * 100.0, float(position[1]) * 100.0, float(position[2]) * 100.0)
+            target = origin + unreal.Vector(float(target_offset[0]) * 100.0, float(target_offset[1]) * 100.0, float(target_offset[2]) * 100.0)
+            return location, target, unreal.Vector(max(extent.x, 420.0), max(extent.y, 320.0), max(extent.z, 220.0))
     if case_type == "llm_object_graph":
         object_text = " ".join(
             str(obj.get(key, ""))
@@ -3848,20 +4415,6 @@ def runtime_camera_pose(runtime_scene: dict, runtime_actors: dict, selected_map:
             focus_extent = unreal.Vector(max(focus_extent.x, 125.0), max(focus_extent.y, 90.0), max(focus_extent.z, 60.0))
             location = focus_target + unreal.Vector(-185.0, -215.0, 155.0)
             return location, focus_target, focus_extent
-    if camera_mode in {"fixed", "static", "trajectory"}:
-        waypoints = camera.get("preview_waypoints") if isinstance(camera.get("preview_waypoints"), list) else []
-        waypoint = waypoints[min(len(waypoints) - 1, len(waypoints) // 2)] if waypoints else {}
-        position = waypoint.get("position_m") if isinstance(waypoint, dict) else None
-        if not (isinstance(position, list) and len(position) >= 3):
-            position = camera.get("location")
-        if isinstance(position, list) and len(position) >= 3:
-            target_offset = waypoint.get("target_offset_m") if isinstance(waypoint, dict) else None
-            if not (isinstance(target_offset, list) and len(target_offset) >= 3):
-                target_offset = camera.get("target_offset_m") or [0.0, 0.0, 0.8]
-            origin = scene_origin or unreal.Vector(0.0, 0.0, 0.0)
-            location = origin + unreal.Vector(float(position[0]) * 100.0, float(position[1]) * 100.0, float(position[2]) * 100.0)
-            target = origin + unreal.Vector(float(target_offset[0]) * 100.0, float(target_offset[1]) * 100.0, float(target_offset[2]) * 100.0)
-            return location, target, unreal.Vector(max(extent.x, 420.0), max(extent.y, 320.0), max(extent.z, 220.0))
     if case_type in {"third_person_box_throw", "character_throw_to_slope_roll", "character_carry_drop"} and "runner_character" in runtime_actors:
         runner_target, runner_extent = combined_actor_bounds([runtime_actors["runner_character"]])
         target = runner_target + unreal.Vector(35.0, 0.0, max(86.0, runner_extent.z * 1.15))
@@ -4043,12 +4596,35 @@ def runtime_camera_pose(runtime_scene: dict, runtime_actors: dict, selected_map:
     return location, target, extent
 
 
-def create_generated_material(name: str, color: unreal.LinearColor, roughness: float = 0.35, metallic: float = 0.0, emissive: float = 0.0):
+def create_generated_material(
+    name: str,
+    color: unreal.LinearColor,
+    roughness: float = 0.35,
+    metallic: float = 0.0,
+    emissive: float = 0.0,
+    *,
+    fixed_color: bool = False,
+    two_sided: bool = False,
+):
     package_path = "/Game/AgenticGenerated/Materials"
     versioned_name = f"{name}_{GENERATED_MATERIAL_VERSION}"
     asset_path = f"{package_path}/{versioned_name}.{versioned_name}"
     existing = unreal.load_asset(asset_path)
     if existing:
+        # Generated assets survive across runs.  Reconcile properties that are
+        # part of the material contract instead of silently reusing stale
+        # one-sided state from an older harness version.
+        try:
+            if bool(existing.get_editor_property("two_sided")) != bool(two_sided):
+                existing.set_editor_property("two_sided", two_sided)
+                unreal.MaterialEditingLibrary.recompile_material(existing)
+                unreal.EditorAssetLibrary.save_asset(asset_path)
+        except Exception:
+            pass
+        try:
+            unreal.MaterialEditingLibrary.recompile_material(existing)
+        except Exception:
+            pass
         return existing
     try:
         unreal.EditorAssetLibrary.make_directory(package_path)
@@ -4060,18 +4636,32 @@ def create_generated_material(name: str, color: unreal.LinearColor, roughness: f
         )
         if not material:
             return None
+        material.set_editor_property("two_sided", two_sided)
         color_node = unreal.MaterialEditingLibrary.create_material_expression(
-            material, unreal.MaterialExpressionVectorParameter, -520, -160
+            material,
+            unreal.MaterialExpressionConstant3Vector if fixed_color else unreal.MaterialExpressionVectorParameter,
+            -520,
+            -160,
         )
-        color_node.set_editor_property("parameter_name", "Tint")
-        color_node.set_editor_property("default_value", color)
+        if fixed_color:
+            color_node.set_editor_property("constant", color)
+        else:
+            color_node.set_editor_property("parameter_name", "Tint")
+            color_node.set_editor_property("default_value", color)
         unreal.MaterialEditingLibrary.connect_material_property(color_node, "", unreal.MaterialProperty.MP_BASE_COLOR)
         if emissive > 0:
             emissive_node = unreal.MaterialEditingLibrary.create_material_expression(
-                material, unreal.MaterialExpressionVectorParameter, -520, -20
+                material,
+                unreal.MaterialExpressionConstant3Vector if fixed_color else unreal.MaterialExpressionVectorParameter,
+                -520,
+                -20,
             )
-            emissive_node.set_editor_property("parameter_name", "EmissiveTint")
-            emissive_node.set_editor_property("default_value", unreal.LinearColor(color.r * emissive, color.g * emissive, color.b * emissive, 1.0))
+            emissive_color = unreal.LinearColor(color.r * emissive, color.g * emissive, color.b * emissive, 1.0)
+            if fixed_color:
+                emissive_node.set_editor_property("constant", emissive_color)
+            else:
+                emissive_node.set_editor_property("parameter_name", "EmissiveTint")
+                emissive_node.set_editor_property("default_value", emissive_color)
             unreal.MaterialEditingLibrary.connect_material_property(emissive_node, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
         rough_node = unreal.MaterialEditingLibrary.create_material_expression(
             material, unreal.MaterialExpressionScalarParameter, -520, 120
@@ -4085,6 +4675,61 @@ def create_generated_material(name: str, color: unreal.LinearColor, roughness: f
         metal_node.set_editor_property("parameter_name", "Metallic")
         metal_node.set_editor_property("default_value", metallic)
         unreal.MaterialEditingLibrary.connect_material_property(metal_node, "", unreal.MaterialProperty.MP_METALLIC)
+        unreal.MaterialEditingLibrary.recompile_material(material)
+        unreal.EditorAssetLibrary.save_asset(asset_path)
+        return material
+    except Exception:
+        return None
+
+
+def create_generated_depth_post_process_material():
+    package_path = "/Game/AgenticGenerated/Materials"
+    asset_name = "M_Agentic_LinearSceneDepthScaled_V2"
+    asset_path = f"{package_path}/{asset_name}.{asset_name}"
+    existing = unreal.load_asset(asset_path)
+    if existing:
+        return existing
+    try:
+        unreal.EditorAssetLibrary.make_directory(package_path)
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            asset_name,
+            package_path,
+            unreal.Material,
+            unreal.MaterialFactoryNew(),
+        )
+        if not material:
+            return None
+        material.set_editor_property("material_domain", unreal.MaterialDomain.MD_POST_PROCESS)
+        material.set_editor_property(
+            "blendable_location",
+            unreal.BlendableLocation.BL_SCENE_COLOR_AFTER_TONEMAPPING,
+        )
+        material.set_editor_property("disable_pre_exposure_scale", True)
+        material.set_editor_property("is_blendable", True)
+        depth_node = unreal.MaterialEditingLibrary.create_material_expression(
+            material,
+            unreal.MaterialExpressionSceneDepth,
+            -300,
+            0,
+        )
+        scale_node = unreal.MaterialEditingLibrary.create_material_expression(
+            material,
+            unreal.MaterialExpressionMultiply,
+            -80,
+            0,
+        )
+        scale_node.set_editor_property("const_b", 0.0001)
+        unreal.MaterialEditingLibrary.connect_material_expressions(
+            depth_node,
+            "",
+            scale_node,
+            "A",
+        )
+        unreal.MaterialEditingLibrary.connect_material_property(
+            scale_node,
+            "",
+            unreal.MaterialProperty.MP_EMISSIVE_COLOR,
+        )
         unreal.MaterialEditingLibrary.recompile_material(material)
         unreal.EditorAssetLibrary.save_asset(asset_path)
         return material
@@ -4227,6 +4872,12 @@ def setup_scene(runtime_scene: dict | None = None):
     write_progress_marker("setup_scene_start", f"runtime_scene={bool(runtime_scene)}")
     selected_map = open_selected_map()
     write_progress_marker("setup_scene_open_selected_map", selected_map.get("name"))
+    if selected_map.get("path") and not selected_map.get("opened"):
+        raise RuntimeError(
+            "F3_UE_MAP_OPEN_FAILED: "
+            f"requested={selected_map.get('requested_package')}, "
+            f"actual={selected_map.get('opened_package')}, error={selected_map.get('error')}"
+        )
     editor = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     selected_map = ensure_selected_map_has_actors(editor, selected_map)
     write_progress_marker("setup_scene_ensure_selected_map_has_actors", selected_map.get("name"))
@@ -4471,10 +5122,40 @@ def setup_scene(runtime_scene: dict | None = None):
         material_override = False
         text = " ".join(str(obj.get(key, "")) for key in ("id", "asset_key", "asset_name", "category_l1", "category_l2")).lower()
         params = obj.get("params") or {}
+        if params.get("disallow_nanite") is True or params.get("surface_mesh_sequence"):
+            component = actor_runtime_component(actor)
+            if component:
+                set_editor_property_if_available(component, "disallow_nanite", True)
         preserve_material = params.get("preserve_material", True)
         has_material_profile = bool(obj.get("material_profile"))
         force_library_mesh = prefers_material_library_mesh(obj)
-        if force_library_mesh and obj.get("behavior") == "static_prop" and preserve_material is not False:
+        visual_material_path = str(params.get("visual_material_path") or "")
+        if params.get("generate_solid_material") is True:
+            material = create_generated_material(
+                str(params.get("generated_material_name") or f"M_Harness_{obj.get('id')}_Solid"),
+                runtime_object_color(obj, unreal.LinearColor(0.05, 0.32, 0.82, 1.0)),
+                roughness=float(params.get("roughness", 0.24)),
+                metallic=float(params.get("metallic", 0.0)),
+                emissive=float(params.get("emissive", 0.12)),
+                fixed_color=params.get("fixed_material_color") is True,
+                two_sided=params.get("two_sided_material") is True,
+            )
+            if material:
+                set_actor_material(actor, material)
+                material_override = True
+        elif visual_material_path:
+            try:
+                set_actor_material(actor, load_asset(visual_material_path))
+                if any(key in params for key in ("color", "color_rgb", "tint")):
+                    set_actor_color(actor, runtime_object_color(obj, unreal.LinearColor(0.58, 0.52, 0.43, 1.0)))
+                material_override = True
+            except Exception as exc:
+                chaos_runtime.setdefault("material_errors", []).append(f"{obj.get('id')}:{visual_material_path}:{exc}")
+        if material_override:
+            pass
+        elif force_library_mesh and obj.get("behavior") == "static_prop" and preserve_material is not False:
+            material_override = False
+        elif str(obj.get("asset_kind") or "").lower() in {"geometrycollection", "geometry_collection"} and preserve_material is not False:
             material_override = False
         elif obj.get("behavior") == "static_prop" and (preserve_material is False or has_material_profile or any(key in params for key in ("color", "color_rgb", "tint"))):
             profile = str(obj.get("material_profile") or "").lower()
@@ -4488,6 +5169,10 @@ def setup_scene(runtime_scene: dict | None = None):
                 material = materials.get("runtime_prop")
             set_actor_material(actor, material)
             set_actor_color(actor, runtime_object_color(obj, unreal.LinearColor(0.58, 0.52, 0.43, 1.0)))
+            material_override = True
+        elif obj.get("behavior") == "elastic_tether_visual":
+            set_actor_material(actor, materials.get("runtime_bridge") or materials.get("runtime_prop"))
+            set_actor_color(actor, runtime_object_color(obj, unreal.LinearColor(0.92, 0.58, 0.08, 1.0)))
             material_override = True
         elif obj.get("behavior") in {"llm_rigid_body", "llm_static_body"}:
             material_text = " ".join(
@@ -4804,20 +5489,95 @@ def setup_scene(runtime_scene: dict | None = None):
 
     if runtime_scene:
         runtime_actors = {}
+        runtime_visual_actors = {}
         runtime_actor_bounds = {}
         support_surfaces = []
 
+        def add_runtime_visual(obj: dict, physics_actor) -> None:
+            visual_path = str((obj.get("params") or {}).get("visual_ue5_path") or "")
+            if not visual_path:
+                return
+            try:
+                visual_scale = (obj.get("params") or {}).get("intact_visual_scale")
+                spawn_scale = (
+                    unreal.Vector(*[float(value) for value in visual_scale])
+                    if isinstance(visual_scale, list) and len(visual_scale) >= 3
+                    else unreal.Vector(1.0, 1.0, 1.0)
+                )
+                visual = spawn_runtime_actor(
+                    "native_phenomena_visual_" + str(obj["id"]),
+                    visual_path,
+                    str((obj.get("params") or {}).get("visual_asset_kind") or obj.get("asset_kind") or "static_mesh"),
+                    physics_actor.get_actor_location(),
+                    spawn_scale,
+                    (obj.get("params") or {}).get("intact_visual_material_path")
+                    or (obj.get("params") or {}).get("visual_material_path"),
+                    physics_actor.get_actor_rotation(),
+                )
+                if not (isinstance(visual_scale, list) and len(visual_scale) >= 3):
+                    normalize_runtime_actor(visual, obj)
+                visual.set_actor_enable_collision(False)
+                component = actor_runtime_component(visual)
+                if component:
+                    try:
+                        visual.set_is_temporarily_hidden_in_editor(False)
+                    except Exception:
+                        pass
+                    visual.set_actor_hidden_in_game(False)
+                    component.set_visibility(True, True)
+                    component.set_hidden_in_game(False, True)
+                    component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+                    component.set_collision_profile_name("NoCollision")
+                    try:
+                        component.set_editor_property("generate_overlap_events", False)
+                    except Exception:
+                        pass
+                    component.set_simulate_physics(False)
+                collision_component = actor_runtime_component(physics_actor)
+                if collision_component:
+                    collision_component.set_visibility(False, True)
+                    collision_component.set_hidden_in_game(True, True)
+                runtime_visual_actors[str(obj["id"])] = visual
+                sync_runtime_visuals({**runtime_actors, str(obj["id"]): physics_actor, "visual_actors": runtime_visual_actors})
+                for entry in spawned_assets:
+                    if entry.get("label") == obj["id"]:
+                        entry["collision_mesh"] = entry.get("mesh")
+                        entry["visual_mesh"] = visual_path
+                        entry["visual_collision_enabled"] = bool(visual.get_actor_enable_collision())
+                        break
+            except Exception as exc:
+                write_progress_marker("runtime_visual_fallback", f"{obj.get('id')}:{exc}")
+
         def is_runtime_support_surface(obj):
-            text = " ".join(str(obj.get(key, "")) for key in ("id", "semantic_role", "semantic_purpose", "behavior", "asset_key", "asset_name")).lower()
+            params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
+            role = str(params.get("role") or obj.get("semantic_role") or "").strip().lower()
             behavior = str(obj.get("behavior") or "").lower()
-            return (
-                behavior in {"llm_static_body", "friction_surface", "landing_surface", "rolling_friction_surface", "stack_support_surface", "projectile_landing_zone"}
-                or any(term in text for term in ("table", "surface", "floor", "ground", "platform", "plane", "tabletop"))
-            )
+            return behavior in {
+                "friction_surface",
+                "landing_surface",
+                "rolling_friction_surface",
+                "stack_support_surface",
+                "projectile_landing_zone",
+                "slope_surface",
+            } or role in {
+                "floor",
+                "ground",
+                "inclined_plane",
+                "platform",
+                "ramp",
+                "slope_surface",
+                "support",
+                "support_surface",
+                "surface",
+                "table",
+                "tabletop",
+            }
 
         def maybe_align_dynamic_to_support(obj, actor, origin, extent):
             behavior = str(obj.get("behavior") or "").lower()
             if behavior not in {"llm_rigid_body", "rolling_impact", "rigid_collision", "friction_slide"}:
+                return origin, extent
+            if (obj.get("params") or {}).get("fit_dynamic_plan") is False:
                 return origin, extent
             if not support_surfaces:
                 return origin, extent
@@ -4848,6 +5608,8 @@ def setup_scene(runtime_scene: dict | None = None):
         def maybe_fit_support_to_dynamic_plan(obj, actor, origin, extent):
             if not is_runtime_support_surface(obj):
                 return origin, extent
+            if (obj.get("params") or {}).get("fit_dynamic_plan") is False:
+                return origin, extent
             component = actor_runtime_component(actor)
             if not component:
                 return origin, extent
@@ -4877,6 +5639,24 @@ def setup_scene(runtime_scene: dict | None = None):
             )
             return actor_bounds(actor)
 
+        def align_runtime_support_top(obj, actor, origin, extent):
+            """Keep the CaseSpec support z semantic (top surface), independent of mesh pivot."""
+            support_top_m = (obj.get("params") or {}).get("support_top_m")
+            if support_top_m is None:
+                return origin, extent
+            desired_top_cm = scene_origin.z + float(support_top_m) * 100.0
+            current_top_cm = origin.z + extent.z
+            delta_cm = desired_top_cm - current_top_cm
+            if abs(delta_cm) <= 0.01:
+                return origin, extent
+            location = actor.get_actor_location()
+            actor.set_actor_location(
+                unreal.Vector(location.x, location.y, location.z + delta_cm),
+                False,
+                False,
+            )
+            return actor_bounds(actor)
+
         if STAGE_HELPERS and lighting_enabled(lighting_controls, "stage_helpers") and selected_map.get("name") == "StudioRuntimeBlank":
             stage_helper_actors = spawn_runtime_stage_helpers(editor, runtime_scene, scene_origin, materials)
         if (
@@ -4896,6 +5676,8 @@ def setup_scene(runtime_scene: dict | None = None):
             runtime_actors[obj["id"]] = actor
             origin, extent = normalize_runtime_actor(actor, obj)
             origin, extent = maybe_fit_support_to_dynamic_plan(obj, actor, origin, extent)
+            if is_runtime_support_surface(obj):
+                origin, extent = align_runtime_support_top(obj, actor, origin, extent)
             runtime_actor_bounds[obj["id"]] = {"origin": [origin.x, origin.y, origin.z], "extent": [extent.x, extent.y, extent.z]}
             if obj.get("behavior") in {"domino_tip", "friction_slide"}:
                 location = actor.get_actor_location()
@@ -4929,6 +5711,10 @@ def setup_scene(runtime_scene: dict | None = None):
             origin, extent = maybe_align_dynamic_to_support(obj, actor, origin, extent)
             runtime_actor_bounds[obj["id"]] = {"origin": [origin.x, origin.y, origin.z], "extent": [extent.x, extent.y, extent.z]}
             physics_detail = configure_runtime_physics(actor, obj, "dynamic", physics_controls)
+            add_runtime_visual(obj, actor)
+            if str(obj["id"]) in runtime_visual_actors:
+                physics_detail["collision_mesh"] = str(obj.get("ue5_path") or "")
+                physics_detail["visual_mesh"] = str((obj.get("params") or {}).get("visual_ue5_path") or "")
             chaos_runtime["actors"].append(physics_detail)
             record_runtime_actor_physics(obj["id"], physics_detail)
             record_runtime_actor_detail(obj["id"], actor, origin, extent)
@@ -4968,8 +5754,8 @@ def setup_scene(runtime_scene: dict | None = None):
         else:
             fov_angle = 54.0
         capture_comp.set_editor_property("fov_angle", fov_angle)
-        capture_comp.set_editor_property("capture_every_frame", True)
-        capture_comp.set_editor_property("capture_on_movement", True)
+        capture_comp.set_editor_property("capture_every_frame", False)
+        capture_comp.set_editor_property("capture_on_movement", False)
         set_editor_property_if_available(capture_comp, "always_persist_rendering_state", True)
         set_editor_property_if_available(capture_comp, "primitive_render_mode", unreal.SceneCapturePrimitiveRenderMode.PRM_RENDER_SCENE_PRIMITIVES)
         post_process_blend_weight = float(lighting_profile.get("post_process_blend_weight", 1.0))
@@ -4982,8 +5768,20 @@ def setup_scene(runtime_scene: dict | None = None):
             )
         else:
             exposure = {"enabled": False, "reason": "map_lighting_controls.use_post_process=false_or_zero_blend"}
+        runtime_initial_transforms = {}
+        for actor_id, actor in runtime_actors.items():
+            try:
+                location = actor.get_actor_location()
+                rotation = actor.get_actor_rotation()
+                runtime_initial_transforms[actor_id] = {
+                    "position_cm": [location.x, location.y, location.z],
+                    "rotation_degrees": [rotation.pitch, rotation.yaw, rotation.roll],
+                }
+            except Exception:
+                pass
         return {
             **runtime_actors,
+            "visual_actors": runtime_visual_actors,
             "capture": capture,
             "capture_comp": capture_comp,
             "render_target": render_target,
@@ -5000,6 +5798,7 @@ def setup_scene(runtime_scene: dict | None = None):
             "spawned_assets": spawned_assets,
             "runtime_actor_bounds": runtime_actor_bounds,
             "runtime_ground_offsets": runtime_ground_offsets,
+            "runtime_initial_transforms": runtime_initial_transforms,
             "chaos_runtime": chaos_runtime,
             "physics_controls": physics_controls,
             "camera_pose": {
@@ -5123,8 +5922,8 @@ def setup_scene(runtime_scene: dict | None = None):
     capture_source = getattr(unreal.SceneCaptureSource, capture_source_name, unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR)
     capture_comp.set_editor_property("capture_source", capture_source)
     capture_comp.set_editor_property("fov_angle", 58.0)
-    capture_comp.set_editor_property("capture_every_frame", True)
-    capture_comp.set_editor_property("capture_on_movement", True)
+    capture_comp.set_editor_property("capture_every_frame", False)
+    capture_comp.set_editor_property("capture_on_movement", False)
     set_editor_property_if_available(capture_comp, "always_persist_rendering_state", True)
     set_editor_property_if_available(capture_comp, "primitive_render_mode", unreal.SceneCapturePrimitiveRenderMode.PRM_RENDER_SCENE_PRIMITIVES)
     post_process_blend_weight = float(lighting_profile.get("post_process_blend_weight", 1.0))
@@ -5194,6 +5993,28 @@ def flush_editor_rendering(sleep_seconds: float = 0.03):
         time.sleep(sleep_seconds)
 
 
+def warm_up_surface_replay_materials(runtime_scene: dict | None) -> dict:
+    objects = ((runtime_scene or {}).get("dynamic_objects") or []) + ((runtime_scene or {}).get("static_objects") or [])
+    required = any(
+        isinstance(obj.get("params"), dict)
+        and (obj["params"].get("surface_mesh_sequence") or obj["params"].get("generate_solid_material"))
+        for obj in objects
+    )
+    requested = RENDER_SURFACE_REPLAY_MATERIAL_WARMUP_SECONDS if required else 0.0
+    started = time.perf_counter()
+    deadline = started + requested
+    ticks = 0
+    while time.perf_counter() < deadline:
+        flush_editor_rendering(0.05)
+        ticks += 1
+    return {
+        "required": required,
+        "requested_seconds": requested,
+        "actual_seconds": round(time.perf_counter() - started, 3),
+        "render_flush_ticks": ticks,
+    }
+
+
 def settle_highres_viewport(seconds: float | None = None, ticks: int = 1) -> dict:
     started = time.perf_counter()
     seconds = RENDER_VIEWPORT_SETTLE_SECONDS if seconds is None else max(0.0, float(seconds))
@@ -5229,7 +6050,7 @@ def capture_frame(actors: dict, frame_path: Path):
     actors["capture_comp"].capture_scene()
     flush_editor_rendering()
     unreal.RenderingLibrary.export_render_target(
-        actors["world"], actors["render_target"], str(frame_path.parent), frame_path.name
+        actors.get("capture_world") or actors["world"], actors["render_target"], str(frame_path.parent), frame_path.name
     )
 
 
@@ -5247,16 +6068,31 @@ def set_capture_source(actors: dict, source_name: str) -> bool:
         return False
 
 
-def capture_render_target_to_file(actors: dict, path: Path) -> bool:
+def capture_render_target_to_file(actors: dict, path: Path, render_target=None, *, force_exr: bool = False) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        flush_editor_rendering()
-        actors["capture_comp"].capture_scene()
-        flush_editor_rendering()
-        unreal.RenderingLibrary.export_render_target(actors["world"], actors["render_target"], str(path.parent), path.name)
-        return path.exists() and path.stat().st_size > 0
-    except Exception:
-        return False
+    target = render_target or actors["render_target"]
+    for attempt in range(3):
+        path.unlink(missing_ok=True)
+        try:
+            flush_editor_rendering()
+            actors["capture_comp"].capture_scene()
+            flush_editor_rendering()
+            if force_exr:
+                options = unreal.ImageWriteOptions(
+                    format=unreal.DesiredImageFormat.EXR,
+                    compression_quality=0,
+                    overwrite_file=True,
+                    async_=False,
+                )
+                unreal.ImageWriteBlueprintLibrary.export_to_disk(target, str(path), options)
+            else:
+                unreal.RenderingLibrary.export_render_target(actors.get("capture_world") or actors["world"], target, str(path.parent), path.name)
+            if path.exists() and path.stat().st_size > 0:
+                return True
+        except Exception:
+            pass
+        flush_editor_rendering(0.05 * (attempt + 1))
+    return False
 
 
 def runtime_actor_ids_for_segmentation(runtime_scene: dict | None) -> list[str]:
@@ -5278,9 +6114,50 @@ def instance_color_from_index(index: int) -> unreal.LinearColor:
     return unreal.LinearColor(red, green, blue, 1.0)
 
 
+INSTANCE_MASK_MATERIALS = {}
+
+
+def ensure_geometry_collection_material_usage(material) -> bool:
+    usage_enum = getattr(getattr(unreal, "MaterialUsage", None), "MATUSAGE_GEOMETRY_COLLECTIONS", None)
+    if not material or usage_enum is None:
+        return False
+    try:
+        if not unreal.MaterialEditingLibrary.has_material_usage(material, usage_enum):
+            unreal.MaterialEditingLibrary.set_material_usage(material, usage_enum)
+            unreal.MaterialEditingLibrary.recompile_material(material)
+            try:
+                unreal.EditorAssetLibrary.save_loaded_asset(material)
+            except Exception:
+                pass
+        return bool(unreal.MaterialEditingLibrary.has_material_usage(material, usage_enum))
+    except Exception:
+        return False
+
+
 def instance_mask_material(index: int):
+    key = int(index)
+    cached = INSTANCE_MASK_MATERIALS.get(key)
+    if cached:
+        return cached
     color = instance_color_from_index(index)
-    return create_generated_material(f"InstanceMask_{index:03d}", color, roughness=1.0, metallic=0.0, emissive=1.0)
+    name = f"InstanceMaskBaseColor_{key:03d}"
+    material = create_generated_material(name, color, roughness=1.0, metallic=0.0, emissive=0.0)
+    if not material:
+        return None
+    ensure_geometry_collection_material_usage(material)
+    try:
+        changed = False
+        if material.get_editor_property("shading_model") != unreal.MaterialShadingModel.MSM_DEFAULT_LIT:
+            material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DEFAULT_LIT)
+            changed = True
+        unreal.MaterialEditingLibrary.recompile_material(material)
+        if changed:
+            versioned = f"{name}_{GENERATED_MATERIAL_VERSION}"
+            unreal.EditorAssetLibrary.save_asset(f"/Game/AgenticGenerated/Materials/{versioned}.{versioned}")
+    except Exception:
+        return None
+    INSTANCE_MASK_MATERIALS[key] = material
+    return material
 
 
 def snapshot_actor_materials(actor) -> list:
@@ -5305,8 +6182,6 @@ def restore_actor_materials(actor, materials: list) -> None:
     if not component:
         return
     for idx, material in enumerate(materials):
-        if material is None:
-            continue
         try:
             component.set_material(idx, material)
         except Exception:
@@ -5316,8 +6191,9 @@ def restore_actor_materials(actor, materials: list) -> None:
 def assign_instance_mask_materials(actors: dict, runtime_scene: dict | None) -> dict:
     restore_state = {}
     mapping = []
+    mask_actors = []
     for index, actor_id in enumerate(runtime_actor_ids_for_segmentation(runtime_scene), start=1):
-        actor = actors.get(actor_id)
+        actor = (actors.get("visual_actors") or {}).get(actor_id) or actors.get(actor_id)
         if not actor:
             continue
         restore_state[actor_id] = snapshot_actor_materials(actor)
@@ -5325,7 +6201,7 @@ def assign_instance_mask_materials(actors: dict, runtime_scene: dict | None) -> 
         if material:
             set_actor_material(actor, material)
             color = instance_color_from_index(index)
-            set_actor_color(actor, color)
+            mask_actors.append(actor)
             mapping.append(
                 {
                     "object_id": actor_id,
@@ -5333,12 +6209,13 @@ def assign_instance_mask_materials(actors: dict, runtime_scene: dict | None) -> 
                     "rgb": [round(color.r, 6), round(color.g, 6), round(color.b, 6)],
                 }
             )
-    return {"restore_state": restore_state, "mapping": mapping}
+    flush_editor_rendering()
+    return {"restore_state": restore_state, "mapping": mapping, "actors": mask_actors}
 
 
 def restore_instance_mask_materials(actors: dict, restore_state: dict) -> None:
     for actor_id, materials in restore_state.items():
-        actor = actors.get(actor_id)
+        actor = (actors.get("visual_actors") or {}).get(actor_id) or actors.get(actor_id)
         if actor:
             restore_actor_materials(actor, materials)
 
@@ -5357,29 +6234,133 @@ def export_depth_and_segmentation_frame(
         "segmentation": {"status": "missing", "path": None, "source_type": None, "instance_count": 0},
         "errors": [],
     }
-    original_source = str((actors.get("lighting") or {}).get("capture_source") or "SCS_FINAL_COLOR_LDR")
+    capture_comp = actors["capture_comp"]
+    original_source = capture_comp.get_editor_property("capture_source")
+    original_target = capture_comp.get_editor_property("texture_target")
+    original_render_mode = capture_comp.get_editor_property("primitive_render_mode")
+    original_show_flags = list(capture_comp.get_editor_property("show_flag_settings"))
+    original_post_process_weight = float(capture_comp.get_editor_property("post_process_blend_weight"))
+    original_post_process_settings = capture_comp.get_editor_property("post_process_settings")
+    original_render_in_main_renderer = bool(capture_comp.get_editor_property("render_in_main_renderer"))
 
     depth_path = data_dirs["depth"] / view_id / f"frame_{int(frame_index):04d}.exr"
+    depth_target = actors.get("depth_render_target")
+    if not depth_target:
+        depth_target = unreal.RenderingLibrary.create_render_target2d(
+            actors.get("capture_world") or actors["world"],
+            WIDTH,
+            HEIGHT,
+            unreal.TextureRenderTargetFormat.RTF_RGBA32F,
+            unreal.LinearColor(0.0, 0.0, 0.0, 1.0),
+        )
+        actors["depth_render_target"] = depth_target
+    capture_comp.set_editor_property("texture_target", depth_target)
     depth_ok = False
-    for source_name in ("SCS_SceneDepth", "SCS_SCENE_DEPTH", "SCS_DeviceDepth", "SCS_DEVICE_DEPTH"):
-        if not set_capture_source(actors, source_name):
-            continue
-        depth_ok = capture_render_target_to_file(actors, depth_path)
-        if depth_ok:
-            result["depth"] = {"status": "available", "path": str(depth_path), "source_type": "ue_depth_buffer", "capture_source": source_name, "size": depth_path.stat().st_size}
-            break
+    depth_material = actors.get("depth_post_process_material") or create_generated_depth_post_process_material()
+    if depth_material:
+        actors["depth_post_process_material"] = depth_material
+    try:
+        if depth_material:
+            capture_comp.add_or_update_blendable(depth_material, 1.0)
+            capture_comp.set_editor_property("post_process_blend_weight", 1.0)
+            capture_comp.set_editor_property("render_in_main_renderer", False)
+            capture_comp.set_editor_property("texture_target", depth_target)
+            if set_capture_source(actors, "SCS_FINAL_COLOR_HDR"):
+                if not actors.get("depth_post_process_warmed"):
+                    flush_editor_rendering()
+                    capture_comp.capture_scene()
+                    flush_editor_rendering()
+                    actors["depth_post_process_warmed"] = True
+                captured = capture_render_target_to_file(actors, depth_path, depth_target, force_exr=True)
+                statistics = depth_pixel_statistics(depth_path) if captured else None
+                depth_ok = bool(captured and float((statistics or {}).get("variance") or 0.0) > 1e-12)
+            else:
+                statistics = None
+            if depth_ok:
+                actors["depth_capture_source"] = "SCS_FINAL_COLOR_HDR_POST_PROCESS_SCENE_DEPTH"
+                result["depth"] = {
+                    "status": "available",
+                    "path": str(depth_path),
+                    "source_type": "ue_linear_scene_depth_post_process",
+                    "capture_source": "SCS_FINAL_COLOR_HDR",
+                    "depth_type": "view_z",
+                    "material": "/Game/AgenticGenerated/Materials/M_Agentic_LinearSceneDepthScaled_V2",
+                    "render_target_format": "RTF_RGBA32F",
+                    "unit": "centimeter",
+                    "depth_encoding": "linear_view_z_times_0.0001",
+                    "stored_value_to_centimeter": 10000.0,
+                    "unit_validation": "ue_scene_depth_semantics; empirical calibration pending",
+                    "pixel_statistics": statistics,
+                    "size": depth_path.stat().st_size,
+                }
+        else:
+            result["errors"].append("depth_post_process_material_unavailable")
+    except Exception as exc:
+        result["errors"].append(f"depth_post_process_capture:{exc}")
+    finally:
+        if depth_material:
+            try:
+                capture_comp.remove_blendable(depth_material)
+            except Exception:
+                pass
+        set_editor_property_if_available(capture_comp, "post_process_settings", original_post_process_settings)
+        set_editor_property_if_available(capture_comp, "post_process_blend_weight", original_post_process_weight)
+        set_editor_property_if_available(capture_comp, "render_in_main_renderer", original_render_in_main_renderer)
+        set_editor_property_if_available(capture_comp, "texture_target", original_target)
+        set_editor_property_if_available(capture_comp, "capture_source", original_source)
     if not depth_ok:
         result["errors"].append("depth_capture_failed")
 
-    mask_path = data_dirs["segmentation"] / view_id / f"frame_{int(frame_index):04d}.png"
+    mask_path = data_dirs["segmentation"] / view_id / f"frame_{int(frame_index):04d}.exr"
+    mask_target = actors.get("mask_render_target")
+    if not mask_target:
+        mask_target = unreal.RenderingLibrary.create_render_target2d(
+            actors.get("capture_world") or actors["world"],
+            WIDTH,
+            HEIGHT,
+            unreal.TextureRenderTargetFormat.RTF_RGBA16F,
+            unreal.LinearColor(0.0, 0.0, 0.0, 1.0),
+        )
+        actors["mask_render_target"] = mask_target
     mask_state = assign_instance_mask_materials(actors, runtime_scene)
+    mask_ok = False
     try:
-        if set_capture_source(actors, "SCS_FINAL_COLOR_LDR"):
-            mask_ok = capture_render_target_to_file(actors, mask_path)
-        else:
-            mask_ok = False
+        capture_comp.clear_show_only_components()
+        capture_comp.set_editor_property(
+            "primitive_render_mode",
+            unreal.SceneCapturePrimitiveRenderMode.PRM_USE_SHOW_ONLY_LIST,
+        )
+        for mask_actor in mask_state.get("actors") or []:
+            capture_comp.show_only_actor_components(mask_actor, True)
+        disabled_flags = []
+        for flag_name in (
+            "AntiAliasing",
+            "TemporalAA",
+            "MotionBlur",
+            "PostProcessing",
+            "Tonemapper",
+            "Bloom",
+            "Lighting",
+            "Fog",
+            "Atmosphere",
+        ):
+            disabled_flags.append(unreal.EngineShowFlagsSetting(show_flag_name=flag_name, enabled=False))
+        capture_comp.set_editor_property("show_flag_settings", disabled_flags)
+        capture_comp.set_editor_property("post_process_blend_weight", 0.0)
+        capture_comp.set_editor_property("texture_target", mask_target)
+        if mask_state.get("mapping") and set_capture_source(actors, "SCS_BASE_COLOR"):
+            mask_ok = capture_render_target_to_file(actors, mask_path, mask_target)
     finally:
         restore_instance_mask_materials(actors, mask_state.get("restore_state") or {})
+        try:
+            capture_comp.clear_show_only_components()
+        except Exception:
+            pass
+        set_editor_property_if_available(capture_comp, "show_flag_settings", original_show_flags)
+        set_editor_property_if_available(capture_comp, "primitive_render_mode", original_render_mode)
+        set_editor_property_if_available(capture_comp, "texture_target", original_target)
+        set_editor_property_if_available(capture_comp, "capture_source", original_source)
+        set_editor_property_if_available(capture_comp, "post_process_blend_weight", original_post_process_weight)
     if mask_ok:
         result["segmentation"] = {
             "status": "available",
@@ -5387,12 +6368,15 @@ def export_depth_and_segmentation_frame(
             "source_type": "ue_instance_material_mask",
             "instance_count": len(mask_state.get("mapping") or []),
             "instance_mapping": mask_state.get("mapping") or [],
+            "capture_source": "SCS_BASE_COLOR",
+            "render_target_format": "RTF_RGBA16F",
+            "background_rgb": [0, 0, 0],
+            "anti_aliasing": "quantized_in_local_runner",
             "size": mask_path.stat().st_size,
         }
     else:
         result["errors"].append("segmentation_capture_failed")
 
-    set_capture_source(actors, original_source)
     return result
 
 
@@ -5404,6 +6388,33 @@ def initialize_data_pass_dirs(output_dir: Path) -> dict[str, Path]:
     for path in dirs.values():
         path.mkdir(exist_ok=True)
     return dirs
+
+
+def recapture_first_data_frame(
+    actors: dict,
+    runtime_scene: dict | None,
+    view_outputs: list[dict],
+    frame_views: dict[str, dict],
+    data_pass_dirs: dict[str, Path],
+    frame_index: int,
+) -> dict[str, dict]:
+    recaptured = {}
+    for view in view_outputs:
+        view_id = str(view.get("view_id") or view.get("id"))
+        frame_view = frame_views.get(view_id)
+        if not frame_view:
+            continue
+        set_capture_view(actors, frame_view["location"], frame_view["target"], frame_view["fov"])
+        payload = export_depth_and_segmentation_frame(
+            actors,
+            runtime_scene,
+            view_id,
+            frame_index,
+            data_pass_dirs,
+        )
+        payload["first_frame_stability_recapture"] = True
+        recaptured[view_id] = payload
+    return recaptured
 
 
 def warm_up_scene_capture(actors: dict) -> None:
@@ -5437,11 +6448,12 @@ def canonical_camera_view_specs(
     main_fov: float,
     runtime_scene: dict | None,
 ) -> list[dict]:
-    radius = max(320.0, max_axis(extent))
+    scene_radius = max_axis(extent)
+    radius = max(320.0, scene_radius)
     subject_offset = unreal.Vector(max(90.0, radius * 0.16), 0.0, max(20.0, radius * 0.05))
     event_offset = unreal.Vector(max(65.0, radius * 0.12), 0.0, max(16.0, radius * 0.04))
     side_height = max(280.0, radius * 0.70)
-    return [
+    views = [
         {
             "id": "front_static",
             "view_id": "front_static",
@@ -5471,9 +6483,9 @@ def canonical_camera_view_specs(
             "label": "Top-down",
             "camera_mode": "fixed",
             "lock_policy": "z-axis plan view fixed across counterfactual group",
-            "location": target + unreal.Vector(-max(80.0, radius * 0.20), -max(140.0, radius * 0.36), max(920.0, radius * 2.25)),
+            "location": target + unreal.Vector(-max(40.0, scene_radius * 0.10), -max(60.0, scene_radius * 0.15), max(320.0, scene_radius * 2.40)),
             "target": target,
-            "fov": 58.0,
+            "fov": 50.0,
         },
         {
             "id": "tracking_subject",
@@ -5482,6 +6494,9 @@ def canonical_camera_view_specs(
             "label": "Tracking subject",
             "camera_mode": "object_bound",
             "lock_policy": "target object id fixed; relative offset fixed",
+            "dynamic_camera_profile": DYNAMIC_CAMERA_PROFILE,
+            "subject_follow_location_gain": DYNAMIC_CAMERA_FOLLOW_GAINS["tracking_subject"][0],
+            "subject_follow_target_gain": DYNAMIC_CAMERA_FOLLOW_GAINS["tracking_subject"][1],
             "location": target + unreal.Vector(-max(430.0, radius * 1.15), -max(500.0, radius * 1.32), max(240.0, radius * 0.60)),
             "target": target + subject_offset,
             "fov": 56.0,
@@ -5493,11 +6508,56 @@ def canonical_camera_view_specs(
             "label": "Event close-up",
             "camera_mode": "trajectory",
             "lock_policy": "event window and spline knots fixed across counterfactual group",
+            "dynamic_camera_profile": DYNAMIC_CAMERA_PROFILE,
+            "subject_follow_location_gain": DYNAMIC_CAMERA_FOLLOW_GAINS["event_closeup"][0],
+            "subject_follow_target_gain": DYNAMIC_CAMERA_FOLLOW_GAINS["event_closeup"][1],
             "location": target + unreal.Vector(-max(260.0, radius * 0.68), -max(330.0, radius * 0.82), max(150.0, radius * 0.38)),
             "target": target + event_offset,
             "fov": 46.0,
         },
     ]
+    camera = runtime_scene.get("camera") if isinstance((runtime_scene or {}).get("camera"), dict) else {}
+    planned = [item for item in camera.get("views") or [] if isinstance(item, dict) and item.get("camera_id")]
+    if not planned:
+        return views
+    planned_by_id = {str(item["camera_id"]): item for item in planned}
+    anchor = planned_by_id.get("front_static") or planned[0]
+    anchor_location = anchor.get("location") or [0.0, 0.0, 0.0]
+    origin = unreal.Vector(
+        base_location.x - float(anchor_location[0]) * 100.0,
+        base_location.y - float(anchor_location[1]) * 100.0,
+        base_location.z - float(anchor_location[2]) * 100.0,
+    )
+    result = []
+    for view in views:
+        spec = planned_by_id.get(str(view.get("view_id")))
+        if not spec:
+            result.append(view)
+            continue
+        location = spec.get("location") or [0.0, 0.0, 0.0]
+        planned_target = spec.get("target") or [0.0, 0.0, 0.0]
+        result.append(
+            {
+                **view,
+                "location": origin + unreal.Vector(*[float(value) * 100.0 for value in location[:3]]),
+                "target": origin + unreal.Vector(*[float(value) * 100.0 for value in planned_target[:3]]),
+                "fov": float(spec.get("fov") or view["fov"]),
+                "camera_mode": str(spec.get("camera_mode") or view["camera_mode"]),
+                "dynamic_camera_profile": spec.get("dynamic_camera_profile") or view.get("dynamic_camera_profile"),
+                "subject_follow_location_gain": float(
+                    spec.get("subject_follow_location_gain")
+                    if spec.get("subject_follow_location_gain") is not None
+                    else view.get("subject_follow_location_gain", 1.0)
+                ),
+                "subject_follow_target_gain": float(
+                    spec.get("subject_follow_target_gain")
+                    if spec.get("subject_follow_target_gain") is not None
+                    else view.get("subject_follow_target_gain", 1.0)
+                ),
+                "plan_source": "camera_plan.json",
+            }
+        )
+    return result
 
 
 def camera_view_specs(actors: dict, runtime_scene: dict | None) -> list[dict]:
@@ -5514,7 +6574,9 @@ def camera_view_specs(actors: dict, runtime_scene: dict | None) -> list[dict]:
     if main_fov is None:
         main_fov = 52.0 if case_type == "gear_collision_chain" else (68.0 if case_type in {"balloon_wind_drift", "bottle_domino_chain"} else (64.0 if case_type == "barrel_impact_cascade" else (66.0 if case_type == "third_person_box_throw" else 62.0)))
     if MULTI_VIEW and CANONICAL_MULTI_VIEW and runtime_scene:
-        return canonical_camera_view_specs(base_location, target, extent, float(main_fov), runtime_scene)
+        views = canonical_camera_view_specs(base_location, target, extent, float(main_fov), runtime_scene)
+        requested = set(runtime_scene.get("requested_views") or [])
+        return [view for view in views if view["view_id"] in requested] or views
     views = [
         {"id": "main", "view_id": "main", "suffix": "", "label": "main tracking view", "camera_mode": "fixed", "location": base_location, "target": target, "fov": main_fov},
     ]
@@ -5592,10 +6654,54 @@ def interpolate_values(a_values, b_values, alpha: float) -> list[float]:
     ]
 
 
-def camera_view_for_frame(view: dict, runtime_scene: dict | None, frame_index: int, frame_count: int) -> dict:
+def fixed_physics_step_s(frame_index: int, fps: int) -> float:
+    return 0.0 if int(frame_index) <= 0 else 1.0 / max(int(fps), 1)
+
+
+def runtime_timebase(runtime_scene: dict | None) -> dict:
+    simulation = runtime_scene.get("simulation") if isinstance((runtime_scene or {}).get("simulation"), dict) else {}
+    render_fps = int(simulation.get("render_fps") or simulation.get("fps") or FPS)
+    physics_hz = int(simulation.get("physics_hz") or render_fps)
+    duration_s = float(simulation.get("duration_s") or DURATION)
+    timebase = build_timebase(duration_s=duration_s, physics_hz=physics_hz, render_fps=render_fps)
+    full_solver_frame_count = int(simulation.get("full_solver_frame_count") or timebase["solver_frame_count"])
+    timebase["physics_step_count"] = int(simulation.get("physics_step_count") or full_solver_frame_count - 1)
+    timebase["full_solver_frame_count"] = full_solver_frame_count
+    timebase["solver_capture_mode"] = str(simulation.get("solver_capture_mode") or "render_boundary")
+    timebase["raw_capture_frame_count"] = int(simulation.get("raw_capture_frame_count") or timebase["canonical_frame_count"])
+    timebase["solver_frame_count"] = int(simulation.get("solver_frame_count") or timebase["raw_capture_frame_count"])
+    return timebase
+
+
+def camera_view_for_frame(
+    view: dict,
+    runtime_scene: dict | None,
+    frame_index: int,
+    frame_count: int,
+    solver_trajectory: list[dict] | None = None,
+) -> dict:
     if not runtime_scene:
         return view
-    if CANONICAL_MULTI_VIEW and view.get("camera_mode") != "trajectory":
+    camera_mode = str(view.get("camera_mode") or "fixed")
+    if CANONICAL_MULTI_VIEW and camera_mode in {"object_bound", "trajectory"}:
+        delta = runtime_subject_delta_cm(runtime_scene, frame_index, solver_trajectory)
+        progress = float(frame_index) / max(1.0, float(frame_count - 1))
+        location_gain = float(view.get("subject_follow_location_gain", 1.0))
+        target_gain = float(view.get("subject_follow_target_gain", 1.0))
+        location = view["location"] + unreal.Vector(
+            delta.x * location_gain,
+            delta.y * location_gain,
+            delta.z * location_gain,
+        )
+        target = view["target"] + unreal.Vector(
+            delta.x * target_gain,
+            delta.y * target_gain,
+            delta.z * target_gain,
+        )
+        if camera_mode == "trajectory":
+            location = location + unreal.Vector(80.0 * progress, 55.0 * math.sin(math.pi * progress), 18.0 * math.sin(math.pi * progress))
+        return {**view, "location": location, "target": target}
+    if CANONICAL_MULTI_VIEW:
         return view
     camera = runtime_scene.get("camera") if isinstance(runtime_scene.get("camera"), dict) else {}
     if str(camera.get("mode") or "").strip().lower() != "trajectory":
@@ -5643,6 +6749,36 @@ def camera_view_for_frame(view: dict, runtime_scene: dict | None, frame_index: i
     return {**view, "location": location, "target": target, "fov": fov}
 
 
+def runtime_subject_delta_cm(runtime_scene: dict, frame_index: int, solver_trajectory: list[dict] | None = None):
+    dynamic_ids = [str(obj.get("id")) for obj in runtime_scene.get("dynamic_objects") or [] if isinstance(obj, dict) and obj.get("id")]
+    if not dynamic_ids:
+        return unreal.Vector(0.0, 0.0, 0.0)
+    subject_id = dynamic_ids[0]
+    precomputed = runtime_scene.get("precomputed_trajectory") if isinstance(runtime_scene, dict) else None
+    camera_truth = precomputed if isinstance(precomputed, list) and any(
+        isinstance(((frame.get("objects") or {}).get(subject_id) or {}).get("camera_position_m"), list)
+        for frame in precomputed
+        if isinstance(frame, dict)
+    ) else None
+    trajectory = camera_truth or solver_trajectory or precomputed
+    if not isinstance(trajectory, list) or not trajectory:
+        return unreal.Vector(0.0, 0.0, 0.0)
+
+    def subject_position(frame: dict) -> list[float] | None:
+        state = (frame.get("objects") or {}).get(subject_id) if isinstance(frame, dict) else None
+        raw = (state or {}).get("camera_position_m") or (state or {}).get("position") or (state or {}).get("position_m")
+        if not isinstance(raw, list) or len(raw) < 3:
+            return None
+        return [float(raw[0]), float(raw[1]), float(raw[2])]
+
+    start = subject_position(trajectory[0])
+    selected = next((frame for frame in trajectory if int(frame.get("frame", -1)) == int(frame_index)), None)
+    current = subject_position(selected or trajectory[min(max(int(frame_index), 0), len(trajectory) - 1)])
+    if start is None or current is None:
+        return unreal.Vector(0.0, 0.0, 0.0)
+    return unreal.Vector(*[(current[index] - start[index]) * 100.0 for index in range(3)])
+
+
 def apply_trajectory_frame(actors: dict, dynamic_ids: list[str], frame: dict, scene_origin: unreal.Vector, runtime_scene: dict | None) -> None:
     for oid in dynamic_ids:
         if oid not in actors or oid not in frame["objects"]:
@@ -5659,7 +6795,47 @@ def apply_trajectory_frame(actors: dict, dynamic_ids: list[str], frame: dict, sc
                 for obj in (runtime_scene.get("dynamic_objects") or []) + (runtime_scene.get("static_objects") or [])
             }
             combined_rot = runtime_combined_rotation(obj_by_id.get(oid, {}), rot)
-            actors[oid].set_actor_rotation(unreal.Rotator(*combined_rot), False)
+            actors[oid].set_actor_rotation(runtime_rotator(combined_rot), False)
+    update_elastic_tether_visual(actors, frame, scene_origin, runtime_scene)
+
+
+def update_elastic_tether_visual(actors: dict, frame: dict, scene_origin: unreal.Vector, runtime_scene: dict | None) -> None:
+    if not runtime_scene:
+        return
+    frame_objects = frame.get("objects") if isinstance(frame.get("objects"), dict) else {}
+    tether_specs = [
+        obj
+        for obj in runtime_scene.get("static_objects") or []
+        if obj.get("behavior") == "elastic_tether_visual"
+    ]
+    for tether_spec in tether_specs:
+        tether = actors.get(str(tether_spec.get("id") or ""))
+        if not tether:
+            continue
+        params = tether_spec.get("params") or {}
+        anchor = frame_objects.get(str(params.get("anchor_id") or "anchor"))
+        body = frame_objects.get(str(params.get("body_id") or "payload"))
+        if not isinstance(anchor, dict) or not isinstance(body, dict):
+            continue
+        anchor_position = runtime_vec3(anchor.get("position") or anchor.get("position_m"))
+        body_position = runtime_vec3(body.get("position") or body.get("position_m"))
+        midpoint = [(anchor_position[index] + body_position[index]) / 2.0 for index in range(3)]
+        direction = [anchor_position[index] - body_position[index] for index in range(3)]
+        length_m = max(0.05, math.sqrt(sum(value * value for value in direction)))
+        z_offset_cm = float((actors.get("runtime_ground_offsets") or {}).get(str(params.get("body_id") or "payload"), 0.0))
+        tether.set_actor_location(ue_vec_from_meters(midpoint, z_offset_cm=z_offset_cm, origin=scene_origin), False, False)
+        component = actor_runtime_component(tether)
+        if component:
+            component.set_world_scale3d(unreal.Vector(0.012, 0.012, length_m))
+        rotation = look_at_rotation(
+            ue_vec_from_meters(body_position, z_offset_cm=z_offset_cm, origin=scene_origin),
+            ue_vec_from_meters(anchor_position, z_offset_cm=z_offset_cm, origin=scene_origin),
+        )
+        try:
+            rotation.pitch = float(rotation.pitch) - 90.0
+        except Exception:
+            pass
+        tether.set_actor_rotation(rotation, False)
 
 
 def runtime_vec3(value, fallback=(0.0, 0.0, 0.0)) -> list[float]:
@@ -5678,11 +6854,23 @@ def delayed_release_projectile_objects(runtime_scene: dict | None) -> list[dict]
         obj
         for obj in runtime_scene.get("dynamic_objects") or []
         if obj.get("behavior") in {"character_throw_projectile", "character_carry_object"}
+        or (isinstance(obj.get("params"), dict) and obj["params"].get("release_time_s") is not None)
     ]
+
+
+def set_delayed_release_collision_enabled(component, enabled: bool) -> None:
+    """Keep scheduled bodies causally absent until their declared release."""
+    component.set_collision_enabled(
+        unreal.CollisionEnabled.QUERY_AND_PHYSICS
+        if enabled
+        else unreal.CollisionEnabled.NO_COLLISION
+    )
 
 
 def projectile_hold_position(obj: dict, frame: dict) -> list[float]:
     params = obj.get("params") or {}
+    if obj.get("behavior") not in {"character_throw_projectile", "character_carry_object"}:
+        return runtime_vec3(params.get("hold_position_m"), obj.get("initial_position_m") or (0.0, 0.0, 1.0))
     carrier_id = str(params.get("carrier_id") or "runner_character")
     frame_objects = frame.get("objects") if isinstance(frame.get("objects"), dict) else {}
     carrier = frame_objects.get(carrier_id) if isinstance(frame_objects, dict) else None
@@ -5756,6 +6944,7 @@ def apply_delayed_release_projectiles(
         if time_s < release_time:
             hold = projectile_hold_position(obj, frame)
             try:
+                set_delayed_release_collision_enabled(component, False)
                 component.set_simulate_physics(False)
                 component.set_enable_gravity(False)
                 component.set_physics_linear_velocity(unreal.Vector(0.0, 0.0, 0.0), False, "")
@@ -5779,22 +6968,30 @@ def apply_delayed_release_projectiles(
             False,
         )
         try:
-            component.set_collision_enabled(unreal.CollisionEnabled.QUERY_AND_PHYSICS)
+            set_delayed_release_collision_enabled(component, True)
         except Exception as exc:
             status.setdefault("errors", []).append(f"delayed_release_collision:{actor_id}:{exc}")
         try:
             component.set_simulate_physics(True)
-            component.set_enable_gravity(True)
+            component.set_enable_gravity(bool(properties.get("enable_gravity", True)))
             component.wake_all_rigid_bodies()
         except Exception as exc:
             status.setdefault("errors", []).append(f"delayed_release_enable:{actor_id}:{exc}")
-        default_velocity = (0.0, 0.0, 0.0) if obj.get("behavior") == "character_carry_object" else (3.0, 0.0, 1.0)
+        default_velocity = (
+            (3.0, 0.0, 1.0)
+            if obj.get("behavior") == "character_throw_projectile"
+            else (0.0, 0.0, 0.0)
+        )
         velocity = runtime_vec3(params.get("release_velocity_m_s"), properties.get("initial_velocity_m_s") or default_velocity)
         try:
             component.set_physics_linear_velocity(unreal.Vector(velocity[0] * 100.0, velocity[1] * 100.0, velocity[2] * 100.0), False, "")
         except Exception as exc:
             status.setdefault("errors", []).append(f"delayed_release_velocity:{actor_id}:{exc}")
-        angular_default = [0.0, 0.0, 0.0] if obj.get("behavior") == "character_carry_object" else [0.0, -540.0, 0.0]
+        angular_default = (
+            [0.0, -540.0, 0.0]
+            if obj.get("behavior") == "character_throw_projectile"
+            else [0.0, 0.0, 0.0]
+        )
         angular_velocity = params.get("release_angular_velocity_deg_s") or properties.get("initial_angular_velocity_deg_s") or angular_default
         if isinstance(angular_velocity, list) and len(angular_velocity) >= 3:
             set_component_angular_velocity_deg(component, angular_velocity, str(actor_id), status)
@@ -5915,6 +7112,74 @@ def record_physics_transform_frame(
     return frame, new_events
 
 
+def latest_native_contacts_from_cpp_driver(driver) -> list[dict]:
+    if not driver:
+        return []
+    try:
+        payload = json.loads(driver.get_capture_json())
+    except Exception:
+        return []
+    frames = payload.get("frames") if isinstance(payload, dict) else None
+    if not isinstance(frames, list) or not frames:
+        return []
+    latest = frames[-1] if isinstance(frames[-1], dict) else {}
+    result = []
+    for contact in latest.get("contacts") or []:
+        if not isinstance(contact, dict) or contact.get("native_collision") is not True:
+            continue
+        result.append(
+            {
+                **contact,
+                "raw_method": contact.get("method"),
+                "method": "ue_native_component_hit",
+            }
+        )
+    return result
+
+
+def merge_live_native_contacts(actual_frame: dict, new_events: list[dict], driver) -> list[dict]:
+    native_events = latest_native_contacts_from_cpp_driver(driver)
+    if not native_events:
+        return new_events
+    native_pairs = {
+        tuple(sorted(str(item) for item in event.get("objects") or []))
+        for event in native_events
+    }
+    actual_frame["contacts"] = [
+        event
+        for event in actual_frame.get("contacts") or []
+        if tuple(sorted(str(item) for item in event.get("objects") or [])) not in native_pairs
+    ] + native_events
+    return [
+        event
+        for event in new_events
+        if tuple(sorted(str(item) for item in event.get("objects") or [])) not in native_pairs
+    ] + native_events
+
+
+def configure_runtime_physics_substepping(runtime_scene: dict | None, status: dict) -> None:
+    timebase = runtime_timebase(runtime_scene)
+    requested_substeps = int(timebase["substeps_per_render"])
+    try:
+        settings = unreal.get_default_object(unreal.PhysicsSettings)
+        settings.set_editor_property("substepping", requested_substeps > 1)
+        settings.set_editor_property("max_substep_delta_time", float(timebase["physics_dt_s"]))
+        settings.set_editor_property("max_substeps", requested_substeps)
+        settings.set_editor_property("min_physics_delta_time", 0.0)
+        settings.set_editor_property("max_physics_delta_time", float(timebase["render_dt_s"]))
+        status["physics_substepping"] = {
+            "enabled": bool(settings.get_editor_property("substepping")),
+            "max_substep_delta_time_s": float(settings.get_editor_property("max_substep_delta_time")),
+            "max_substeps": int(settings.get_editor_property("max_substeps")),
+            "max_physics_delta_time_s": float(settings.get_editor_property("max_physics_delta_time")),
+            "requested_physics_hz": int(timebase["physics_hz"]),
+            "render_fps": int(timebase["render_fps"]),
+        }
+    except Exception as exc:
+        status["physics_substepping"] = {"enabled": False, "error": str(exc)}
+        status.setdefault("errors", []).append(f"physics_substepping:{exc}")
+
+
 def start_editor_physics_capture(actors: dict, runtime_scene: dict | None, expected_seconds: float) -> dict:
     controls = actors.get("physics_controls") or runtime_physics_controls(runtime_scene)
     status = {
@@ -5931,6 +7196,7 @@ def start_editor_physics_capture(actors: dict, runtime_scene: dict | None, expec
     }
     if not status["enabled"]:
         return status
+    configure_runtime_physics_substepping(runtime_scene, status)
     try:
         unreal.SystemLibrary.execute_console_command(None, f"t.MaxFPS {max(1, FPS)}")
     except Exception as exc:
@@ -6207,10 +7473,12 @@ def start_cpp_runtime_driver(actors: dict, runtime_scene: dict | None, status: d
             cpp_status["errors"].append(f"register_dynamic:{actor_id}:{exc}")
 
     try:
-        sample_interval = 1.0 / max(FPS, 1)
+        timebase = runtime_timebase(runtime_scene)
+        sample_interval = float(timebase["render_dt_s"])
+        capture_frames = int(timebase["raw_capture_frame_count"])
         output_path = str(OUTPUT_DIR / "cpp_physics_capture.json")
         cpp_status["output_path"] = output_path
-        driver.start_capture(sample_interval, max(1, int(max_frames)), output_path)
+        driver.start_capture(sample_interval, capture_frames, output_path)
         try:
             driver.set_manual_stepping_enabled(True)
             cpp_status["manual_stepping_enabled"] = True
@@ -6219,7 +7487,8 @@ def start_cpp_runtime_driver(actors: dict, runtime_scene: dict | None, status: d
             cpp_status["manual_stepping_enabled"] = False
         cpp_status["started"] = True
         cpp_status["sample_interval_s"] = sample_interval
-        cpp_status["max_frames"] = int(max_frames)
+        cpp_status["max_frames"] = capture_frames
+        cpp_status["timebase"] = timebase
         for obj in runtime_scene.get("dynamic_objects") or []:
             actor_id = obj.get("id")
             actor = actors.get(actor_id)
@@ -6252,21 +7521,33 @@ def start_cpp_runtime_driver(actors: dict, runtime_scene: dict | None, status: d
         return False
 
 
-def cpp_capture_to_runtime_trajectory(capture: dict, actors: dict, runtime_scene: dict | None, scene_origin: unreal.Vector) -> tuple[list[dict], list[dict]]:
+def cpp_capture_to_runtime_trajectory(capture: dict, actors: dict, runtime_scene: dict | None, scene_origin: unreal.Vector) -> tuple[list[dict], list[dict], list[dict], dict]:
     dynamic_ids, _static_ids = runtime_object_ids(runtime_scene)
     ground_offsets = actors.get("runtime_ground_offsets") or {}
-    trajectory = []
-    contact_events = []
+    solver_trajectory = []
     for frame in capture.get("frames") or []:
         frame_index = int(frame.get("frame") or 0)
         elapsed = float_control(frame.get("time"), 0.0, 0.0, None)
         frame_objects = frame.get("objects") or {}
+        derived_contacts = [
+            {
+                **contact,
+                "raw_method": contact.get("method"),
+                "method": (
+                    "ue_native_component_hit"
+                    if contact.get("native_collision") is True or contact.get("method") == "ue_on_component_hit"
+                    else "ue_postsolve_bounds_inference"
+                ),
+            }
+            for contact in frame.get("contacts") or []
+            if isinstance(contact, dict)
+        ]
         runtime_frame = {
             "frame": frame_index,
             "time": round(elapsed, 4),
             "source": "adp_cpp_runtime_driver",
             "objects": {},
-            "contacts": frame.get("contacts") or [],
+            "contacts": derived_contacts,
         }
         for actor_id in dynamic_ids:
             raw = frame_objects.get(actor_id)
@@ -6286,13 +7567,24 @@ def cpp_capture_to_runtime_trajectory(capture: dict, actors: dict, runtime_scene
                 "position_cm": [round(float(pos_cm[0]), 3), round(float(pos_cm[1]), 3), round(float(pos_cm[2]), 3)],
                 "rotation_degrees": [round(float(rot[0]), 4), round(float(rot[1]), 4), round(float(rot[2]), 4)] if len(rot) >= 3 else [0.0, 0.0, 0.0],
                 "velocity_cm_s": raw.get("velocity_cm_s") or [0.0, 0.0, 0.0],
+                "velocity_m_s": [round(float(value) / 100.0, 6) for value in (raw.get("velocity_cm_s") or [0.0, 0.0, 0.0])[:3]],
                 "source": "adp_cpp_runtime_driver",
             }
-        for contact in frame.get("contacts") or []:
-            if isinstance(contact, dict):
-                contact_events.append(contact)
-        trajectory.append(runtime_frame)
-    return trajectory, contact_events
+        solver_trajectory.append(runtime_frame)
+    timebase = runtime_timebase(runtime_scene)
+    contact_events = []
+    for frame_index, frame in enumerate(solver_trajectory):
+        source_physics_step = int(timebase["source_solver_indices"][frame_index])
+        frame["source_solver_frame"] = frame_index
+        frame["source_physics_step"] = source_physics_step
+        frame["source_physics_time_s"] = round(source_physics_step / int(timebase["physics_hz"]), 9)
+        for event in frame.get("contacts") or []:
+            event["source_solver_frame"] = frame_index
+            event["source_physics_step"] = source_physics_step
+            event["source_solver_time_s"] = float(frame.get("time") or 0.0)
+            contact_events.append(event)
+    trajectory = solver_trajectory
+    return trajectory, contact_events, solver_trajectory, timebase
 
 
 def stop_cpp_runtime_driver(actors: dict, status: dict, runtime_scene: dict | None, scene_origin: unreal.Vector) -> tuple[list[dict], list[dict]]:
@@ -6326,9 +7618,32 @@ def stop_cpp_runtime_driver(actors: dict, status: dict, runtime_scene: dict | No
         return [], []
     cpp_status["frame_count"] = int(capture.get("frame_count") or len(capture.get("frames") or []))
     cpp_status["capture_complete"] = bool(capture.get("capture_complete"))
-    trajectory, contact_events = cpp_capture_to_runtime_trajectory(capture, actors, runtime_scene, scene_origin)
+    trajectory, contact_events, solver_trajectory, timebase = cpp_capture_to_runtime_trajectory(capture, actors, runtime_scene, scene_origin)
+    solver_path = OUTPUT_DIR / "solver_trajectory.json"
+    solver_path.write_text(json.dumps(solver_trajectory, indent=2), encoding="utf-8")
+    solver_sha256 = hashlib.sha256(solver_path.read_bytes()).hexdigest()
+    sampling_map = {
+        "schema_version": "harness_sampling_map_v1",
+        "timebase": timebase,
+        "solver_cache": str(solver_path),
+        "solver_cache_sha256": solver_sha256,
+        "samples": [
+            {
+                "frame": frame_index,
+                "time_s": round(frame_index / int(timebase["render_fps"]), 9),
+                "source_solver_frame": frame_index,
+                "source_solver_time_s": round(frame_index / int(timebase["render_fps"]), 9),
+                "source_physics_step": source_index,
+                "source_physics_time_s": round(source_index / int(timebase["physics_hz"]), 9),
+            }
+            for frame_index, source_index in enumerate(timebase["source_solver_indices"])
+        ],
+    }
+    (OUTPUT_DIR / "sampling_map.json").write_text(json.dumps(sampling_map, indent=2), encoding="utf-8")
     cpp_status["trajectory_frames"] = len(trajectory)
+    cpp_status["solver_trajectory_frames"] = len(solver_trajectory)
     cpp_status["contact_samples"] = len(contact_events)
+    cpp_status["solver_cache_sha256"] = solver_sha256
     return trajectory, contact_events
 
 
@@ -6418,11 +7733,14 @@ def rebind_runtime_actors_to_simulation_world(
         obj.get("id"): f"native_phenomena_demo_{obj.get('id')}"
         for obj in ((runtime_scene.get("dynamic_objects") or []) + (runtime_scene.get("static_objects") or [])) if obj.get("id")
     }
+    visual_actors = actors.get("visual_actors") or {}
+    wanted_visuals = {
+        actor_id: f"native_phenomena_visual_{actor_id}"
+        for actor_id in visual_actors
+    }
     rebound = []
-    actor_classes = [unreal.StaticMeshActor]
-    skeletal_actor_class = getattr(unreal, "SkeletalMeshActor", None)
-    if skeletal_actor_class:
-        actor_classes.append(skeletal_actor_class)
+    rebound_visuals = []
+    actor_classes = [unreal.Actor]
     for world in worlds:
         world_actors = []
         for actor_class in actor_classes:
@@ -6444,11 +7762,105 @@ def rebind_runtime_actors_to_simulation_world(
             if match:
                 actors[actor_id] = match
                 rebound.append(actor_id)
+        for actor_id, label in wanted_visuals.items():
+            match = label_map.get(label)
+            if not match:
+                match = next((actor for actor_label, actor in label_map.items() if actor_label.startswith(label)), None)
+            if match:
+                visual_actors[actor_id] = match
+                rebound_visuals.append(actor_id)
+        capture_actor = label_map.get("native_phenomena_demo_capture_camera")
+        if capture_actor:
+            capture_component = getattr(capture_actor, "capture_component2d", None)
+            if capture_component:
+                actors["capture"] = capture_actor
+                actors["capture_comp"] = capture_component
+                actors["capture_world"] = world
+                try:
+                    actors["render_target"] = capture_component.get_editor_property("texture_target") or actors.get("render_target")
+                except Exception:
+                    pass
+                status["rebound_capture_actor"] = True
         if rebound:
             actors["physics_game_world"] = world
             status["rebound_world"] = str(world)
             break
     status["rebound_actor_ids"] = sorted(set(rebound))
+    status["rebound_visual_actor_ids"] = sorted(set(rebound_visuals))
+    missing_visuals = sorted(set(wanted_visuals) - set(rebound_visuals))
+    status["missing_visual_actor_ids"] = missing_visuals
+    status["visual_rebind_complete"] = not missing_visuals
+    for actor_id in rebound_visuals:
+        physics_component = actor_runtime_component(actors.get(actor_id))
+        visual_component = actor_runtime_component(visual_actors.get(actor_id))
+        if physics_component:
+            actors[actor_id].set_actor_hidden_in_game(True)
+            physics_component.set_visibility(False, True)
+            physics_component.set_hidden_in_game(True, True)
+        if visual_component:
+            try:
+                visual_actors[actor_id].set_is_temporarily_hidden_in_editor(False)
+            except Exception:
+                pass
+            visual_actors[actor_id].set_actor_hidden_in_game(False)
+            visual_component.set_visibility(True, True)
+            visual_component.set_hidden_in_game(False, True)
+    if missing_visuals and record_failure:
+        status.setdefault("errors", []).append(f"game_world_visual_rebind:missing:{','.join(missing_visuals)}")
+
+
+def set_simulation_world_paused(actors: dict, status: dict, paused: bool) -> bool:
+    world = actors.get("physics_game_world")
+    if not world:
+        return False
+    try:
+        result = bool(unreal.GameplayStatics.set_game_paused(world, bool(paused)))
+        status["game_world_paused"] = bool(paused)
+        return result
+    except Exception as exc:
+        status.setdefault("errors", []).append(f"set_game_paused:{exc}")
+        return False
+
+
+def reset_runtime_actors_to_initial_state(actors: dict, runtime_scene: dict | None, status: dict) -> None:
+    if not runtime_scene or status.get("initial_state_reset"):
+        return
+    initial_transforms = actors.get("runtime_initial_transforms") or {}
+    reset_ids = []
+    for obj in (runtime_scene.get("static_objects") or []) + (runtime_scene.get("dynamic_objects") or []):
+        actor_id = obj.get("id")
+        actor = actors.get(actor_id)
+        initial = initial_transforms.get(actor_id) if actor_id else None
+        if not actor or not isinstance(initial, dict):
+            continue
+        component = actor_runtime_component(actor)
+        if component:
+            try:
+                component.set_simulate_physics(False)
+            except Exception:
+                pass
+        position_cm = initial.get("position_cm") or []
+        rotation = initial.get("rotation_degrees") or []
+        try:
+            actor.set_actor_location(unreal.Vector(*[float(value) for value in position_cm[:3]]), False, False)
+            actor.set_actor_rotation(unreal.Rotator(*[float(value) for value in rotation[:3]]), False)
+            reset_ids.append(str(actor_id))
+        except Exception as exc:
+            status.setdefault("errors", []).append(f"initial_state_reset:{actor_id}:{exc}")
+    status["initial_state_reset"] = True
+    status["initial_state_reset_ids"] = sorted(reset_ids)
+
+
+def advance_cpp_runtime_driver(cpp_driver, actors: dict, status: dict, runtime_scene: dict | None, frame_index: int) -> int:
+    timebase = runtime_timebase(runtime_scene)
+    step_s = 0.0 if int(frame_index) <= 0 else float(timebase["render_dt_s"])
+    if step_s > 0:
+        set_simulation_world_paused(actors, status, False)
+    try:
+        cpp_driver.advance_capture(step_s, step_s > 0.0)
+    finally:
+        set_simulation_world_paused(actors, status, True)
+    return 1
 
 
 def advance_physics_capture(actors: dict, status: dict, dt: float) -> None:
@@ -6739,7 +8151,6 @@ def summarize_real_data_passes(data_pass_frames: dict[str, list[dict]]) -> tuple
         depth_frames = [frame.get("depth") or {} for frame in frames if (frame.get("depth") or {}).get("status") == "available"]
         segmentation_frames = [frame.get("segmentation") or {} for frame in frames if (frame.get("segmentation") or {}).get("status") == "available"]
         if depth_frames:
-            sizes = [int(frame.get("size") or 0) for frame in depth_frames]
             depth_views.append(
                 {
                     "view_id": view_id,
@@ -6748,7 +8159,13 @@ def summarize_real_data_passes(data_pass_frames: dict[str, list[dict]]) -> tuple
                     "frame_count": len(depth_frames),
                     "source_type": "ue_depth_buffer",
                     "capture_source": depth_frames[0].get("capture_source"),
-                    "depth_variance": round(sum(size for size in sizes if size > 0) / max(1, len(sizes)), 6),
+                    "render_target_format": depth_frames[0].get("render_target_format"),
+                    "unit": depth_frames[0].get("unit"),
+                    "depth_type": depth_frames[0].get("depth_type"),
+                    "depth_encoding": depth_frames[0].get("depth_encoding"),
+                    "stored_value_to_centimeter": depth_frames[0].get("stored_value_to_centimeter"),
+                    "unit_validation": depth_frames[0].get("unit_validation"),
+                    "material": depth_frames[0].get("material"),
                 }
             )
         if segmentation_frames:
@@ -6842,9 +8259,20 @@ def start_highres_viewport_capture(
         unreal.EditorPythonScripting.set_keep_python_script_alive(True)
     except Exception:
         pass
-    view = camera_view_specs(actors, runtime_scene)[0]
     frames_dir.mkdir(exist_ok=True)
-    preview_path = OUTPUT_DIR / "preview.mp4"
+    view_outputs = []
+    for view in camera_view_specs(actors, runtime_scene):
+        suffix = "" if not view_outputs else str(view.get("suffix") or f"_{view.get('view_id') or view.get('id')}")
+        view_frames_dir = frames_dir if not suffix else OUTPUT_DIR / f"frames{suffix}"
+        view_frames_dir.mkdir(exist_ok=True)
+        view_outputs.append({**view, "frames_dir": view_frames_dir, "preview": OUTPUT_DIR / f"preview{suffix}.mp4"})
+    render_data_passes = bool(globals().get("RENDER_DATA_PASSES", False))
+    data_pass_dirs = initialize_data_pass_dirs(OUTPUT_DIR) if render_data_passes else {}
+    data_pass_frames = {
+        str(output.get("view_id") or output.get("id")): []
+        for output in view_outputs
+    }
+    view = view_outputs[0]
     scene_origin = unreal.Vector(*actors.get("scene_origin", [0.0, 0.0, 0.0]))
     dynamic_ids = [obj.get("id") for obj in (runtime_scene.get("dynamic_objects") if runtime_scene else [])] if runtime_scene else ["rubber_ball", "lead_ball", "steel_ball"]
     physics_enabled = physics_capture_enabled(actors, runtime_scene)
@@ -6858,6 +8286,7 @@ def start_highres_viewport_capture(
     editor_subsystem = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
     state = {
         "frame_index": 0,
+        "view_index": 0,
         "waiting_path": None,
         "last_size": -1,
         "stable_count": 0,
@@ -6866,7 +8295,6 @@ def start_highres_viewport_capture(
         "errors": [],
         "handle": None,
         "task": None,
-        "physics_started": None,
         "physics_ready": not physics_enabled,
         "physics_wait_started": time.perf_counter(),
         "physics_last_rebind_attempt": 0.0,
@@ -6877,7 +8305,12 @@ def start_highres_viewport_capture(
         "seen_contact_pairs": set(),
         "probe_index": 0,
         "waiting_kind": None,
-        "camera_track": [],
+        "data_capture_in_progress": False,
+        "capture_request_in_progress": False,
+        "camera_tracks": {
+            str(output.get("view_id") or output.get("id")): []
+            for output in view_outputs
+        },
     }
 
     summary = {
@@ -6892,6 +8325,7 @@ def start_highres_viewport_capture(
         "height": HEIGHT,
         "fps": FPS,
         "duration": DURATION,
+        "timebase": runtime_timebase(runtime_scene),
         "asset_manifest_resolver": ASSET_MANIFEST_DATA.get("resolver"),
         "asset_database_assets": GITLAB_ONLY_ASSETS,
         "studio_scene_spec": {
@@ -6918,6 +8352,7 @@ def start_highres_viewport_capture(
         "spawned_assets": actors.get("spawned_assets", []),
         "runtime_actor_bounds": actors.get("runtime_actor_bounds", {}),
         "runtime_ground_offsets": actors.get("runtime_ground_offsets", {}),
+        "runtime_initial_transforms": actors.get("runtime_initial_transforms", {}),
         "chaos_runtime": actors.get("chaos_runtime", {}),
         "removed_map_actors": actors.get("removed_map_actors", []),
         "background_stage_actors": actors.get("background_stage_actors", []),
@@ -6928,7 +8363,7 @@ def start_highres_viewport_capture(
         "planned_validation": validation,
         "physics_capture": {
             **physics_status,
-            "trajectory_source": analytic_solver_source(actors, runtime_scene) if analytic_contact_solver_enabled(actors, runtime_scene) else ("adp_cpp_runtime_driver" if physics_enabled and physics_controls.get("cpp_runtime_driver_enabled") else ("ue_chaos_transform_capture" if physics_enabled else "scripted_trajectory_replay")),
+            "trajectory_source": analytic_solver_source(actors, runtime_scene) if analytic_contact_solver_enabled(actors, runtime_scene) else ("adp_cpp_runtime_driver" if physics_enabled and physics_controls.get("cpp_runtime_driver_enabled") else ("ue_chaos_transform_capture" if physics_enabled else str(runtime_physics_controls(runtime_scene).get("simulation_driver") or "scripted_trajectory_replay"))),
             "contact_events": [],
             "initial_impulse_start_frame": initial_impulse_start_frame,
         },
@@ -7022,6 +8457,7 @@ def start_highres_viewport_capture(
             if actors.get("runtime_animation_state"):
                 summary["physics_capture"]["runtime_animation_state"] = actors.get("runtime_animation_state")
             if state["actual_trajectory"]:
+                attach_geometry_collection_fracture_events(state["actual_trajectory"], physics_status)
                 actual_validation = validate_runtime_scene(runtime_scene, state["actual_trajectory"]) if runtime_scene else validation
                 summary["validation"] = actual_validation
                 summary["physics_capture"]["actual_frame_count"] = len(state["actual_trajectory"])
@@ -7031,24 +8467,28 @@ def start_highres_viewport_capture(
                 (OUTPUT_DIR / "validation.json").write_text(json.dumps(actual_validation, indent=2), encoding="utf-8")
         state["encode_started"] = time.perf_counter()
         summary["timing"]["capture_seconds"] = round(state["encode_started"] - state["capture_started"], 2)
-        summary["frame_hashes"] = sampled_frame_hashes(frames_dir, len(trajectory), "png")
-        summary["encode"] = encode_video(frames_dir, preview_path, actors.get("video_filter", ""), "png")
-        view_id = str(view.get("view_id") or view.get("id"))
-        summary["multi_view"] = [{
-            "id": view["id"],
-            "view_id": view_id,
-            "label": view["label"],
-            "camera_mode": view.get("camera_mode") or "fixed",
-            "lock_policy": view.get("lock_policy"),
-            "preview": str(preview_path),
-            "frame_hashes": summary["frame_hashes"],
-            "encode": summary["encode"],
-            "camera": {
-                "location": [view["location"].x, view["location"].y, view["location"].z],
-                "target": [view["target"].x, view["target"].y, view["target"].z],
-                "fov": view["fov"],
-            },
-        }]
+        encode_results = []
+        for output in view_outputs:
+            frame_hashes = sampled_frame_hashes(output["frames_dir"], len(trajectory), "png")
+            encode = encode_video(output["frames_dir"], output["preview"], actors.get("video_filter", ""), "png")
+            encode_results.append({
+                "id": output["id"],
+                "view_id": str(output.get("view_id") or output.get("id")),
+                "label": output["label"],
+                "camera_mode": output.get("camera_mode") or "fixed",
+                "lock_policy": output.get("lock_policy"),
+                "preview": str(output["preview"]),
+                "frame_hashes": frame_hashes,
+                "encode": encode,
+                "camera": {
+                    "location": [output["location"].x, output["location"].y, output["location"].z],
+                    "target": [output["target"].x, output["target"].y, output["target"].z],
+                    "fov": output["fov"],
+                },
+            })
+        summary["multi_view"] = encode_results
+        summary["frame_hashes"] = encode_results[0]["frame_hashes"]
+        summary["encode"] = encode_results[0]["encode"]
         camera_trajectory_payload = {
             "schema_version": "camera_trajectories_v1",
             "frame_count": len(trajectory),
@@ -7056,34 +8496,40 @@ def start_highres_viewport_capture(
             "timebase": "frame_index / fps",
             "views": [
                 {
-                    "view_id": view_id,
-                    "label": view.get("label"),
-                    "camera_mode": view.get("camera_mode") or "fixed",
-                    "lock_policy": view.get("lock_policy"),
-                    "frames": state["camera_track"],
+                    "view_id": str(output.get("view_id") or output.get("id")),
+                    "label": output.get("label"),
+                    "camera_mode": output.get("camera_mode") or "fixed",
+                    "lock_policy": output.get("lock_policy"),
+                    "frames": state["camera_tracks"].get(str(output.get("view_id") or output.get("id")), []),
                 }
+                for output in view_outputs
             ],
         }
         camera_trajectories_path = OUTPUT_DIR / "camera_trajectories.json"
         camera_trajectories_path.write_text(json.dumps(camera_trajectory_payload, indent=2), encoding="utf-8")
         summary["camera_trajectories"] = {
             "path": str(camera_trajectories_path),
-            "view_count": 1,
-            "views": [view_id],
+            "view_count": len(view_outputs),
+            "views": [str(output.get("view_id") or output.get("id")) for output in view_outputs],
         }
         final_trajectory = state["actual_trajectory"] if state["actual_trajectory"] else trajectory
         summary["render_pass_manifest"] = write_render_pass_manifest(
             OUTPUT_DIR,
             summary["multi_view"],
-            {view_id: state["camera_track"]},
+            state["camera_tracks"],
             final_trajectory,
             DURATION,
+            data_pass_frames,
         )
         summary["timing"]["encode_seconds"] = round(time.perf_counter() - state["encode_started"], 2)
         summary["timing"]["total_seconds"] = round(time.perf_counter() - script_started, 2)
-        if not KEEP_RENDER_FRAMES and frames_dir.exists():
-            shutil.rmtree(frames_dir, ignore_errors=True)
-            summary["frame_cleanup"]["removed_frame_dirs"] = [str(frames_dir)]
+        if not KEEP_RENDER_FRAMES:
+            removed = []
+            for path in dict.fromkeys([frames_dir, *[output["frames_dir"] for output in view_outputs]]):
+                if path.exists():
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed.append(str(path))
+            summary["frame_cleanup"]["removed_frame_dirs"] = removed
         if state["errors"]:
             summary["errors"] = state["errors"]
         write_summary(summary)
@@ -7093,25 +8539,30 @@ def start_highres_viewport_capture(
     def submit_highres_screenshot(path: Path, kind: str) -> None:
         if path.exists():
             path.unlink()
-        state["task"] = unreal.AutomationLibrary.take_high_res_screenshot(
-            WIDTH,
-            HEIGHT,
-            str(path),
-            camera,
-            False,
-            False,
-            unreal.ComparisonTolerance.LOW,
-            "Simulator Studio viewport capture",
-            0.08,
-            False,
-        )
-        state["waiting_path"] = path
-        state["waiting_kind"] = kind
-        state["last_size"] = -1
-        state["stable_count"] = 0
-        state["requested_at"] = time.perf_counter()
+        state["capture_request_in_progress"] = True
+        try:
+            state["task"] = unreal.AutomationLibrary.take_high_res_screenshot(
+                WIDTH,
+                HEIGHT,
+                str(path),
+                camera,
+                False,
+                False,
+                unreal.ComparisonTolerance.LOW,
+                "Simulator Studio viewport capture",
+                0.08,
+                False,
+            )
+            state["waiting_path"] = path
+            state["waiting_kind"] = kind
+            state["last_size"] = -1
+            state["stable_count"] = 0
+            state["requested_at"] = time.perf_counter()
+        finally:
+            state["capture_request_in_progress"] = False
 
     def request_probe() -> None:
+        view = view_outputs[0]
         frame_view = camera_view_for_frame(view, runtime_scene, 0, len(trajectory))
         camera.set_actor_location(frame_view["location"], False, False)
         camera.set_actor_rotation(look_at_rotation(frame_view["location"], frame_view["target"]), False)
@@ -7123,7 +8574,7 @@ def start_highres_viewport_capture(
         configure_clean_highres_viewport()
         settle = settle_highres_viewport(0.0, max(1, RENDER_PER_FRAME_SETTLE_TICKS))
         summary["capture_readiness"].setdefault("probe_settles", []).append(settle)
-        path = frames_dir / f"warmup_probe_{state['probe_index']:04d}.png"
+        path = view["frames_dir"] / f"warmup_probe_{state['probe_index']:04d}.png"
         submit_highres_screenshot(path, "probe")
 
     def handle_probe_complete(path: Path) -> None:
@@ -7144,7 +8595,8 @@ def start_highres_viewport_capture(
 
     def request_frame(frame_index: int):
         frame = trajectory[frame_index]
-        if physics_enabled and analytic_contact_solver_enabled(actors, runtime_scene):
+        first_view_for_frame = state["view_index"] == 0
+        if first_view_for_frame and physics_enabled and analytic_contact_solver_enabled(actors, runtime_scene):
             solver_source = analytic_solver_source(actors, runtime_scene)
             apply_trajectory_frame(actors, dynamic_ids, frame, scene_origin, runtime_scene)
             apply_runtime_animation_segments(actors, runtime_scene, frame, physics_status)
@@ -7158,7 +8610,7 @@ def start_highres_viewport_capture(
             }
             state["actual_trajectory"].append(actual_frame)
             state["contact_events"].extend(frame.get("contacts") or [])
-        elif physics_enabled:
+        elif first_view_for_frame and physics_enabled:
             cpp_status = physics_status.get("cpp_runtime_driver") or {}
             cpp_driver = actors.get("adp_physics_runtime_driver")
             runner_ids = [obj.get("id") for obj in (runtime_scene.get("dynamic_objects") or []) if obj.get("behavior") == "third_person_runner"] if runtime_scene else []
@@ -7168,12 +8620,12 @@ def start_highres_viewport_capture(
             apply_delayed_release_projectiles(actors, runtime_scene, frame, scene_origin, physics_status)
             if cpp_status.get("started") and cpp_driver:
                 try:
-                    cpp_driver.advance_capture(1.0 / max(FPS, 1), True)
-                    cpp_status["manual_step_count"] = int(cpp_status.get("manual_step_count") or 0) + 1
+                    steps = advance_cpp_runtime_driver(cpp_driver, actors, physics_status, runtime_scene, frame_index)
+                    cpp_status["manual_step_count"] = int(cpp_status.get("manual_step_count") or 0) + steps
                 except Exception as exc:
                     cpp_status.setdefault("errors", []).append(f"advance_capture:{exc}")
             elif physics_status.get("manual_world_tick_available"):
-                advance_physics_capture(actors, physics_status, 1.0 / max(FPS, 1))
+                advance_physics_capture(actors, physics_status, fixed_physics_step_s(frame_index, FPS))
             if runner_ids:
                 apply_trajectory_frame(actors, runner_ids, frame, scene_origin, runtime_scene)
             apply_runtime_animation_segments(actors, runtime_scene, frame, physics_status)
@@ -7182,10 +8634,12 @@ def start_highres_viewport_capture(
                 actors,
                 runtime_scene,
                 frame_index,
-                time.perf_counter() - (state["physics_started"] or state["capture_started"]),
+                frame_index / max(FPS, 1),
                 scene_origin,
                 state["seen_contact_pairs"],
             )
+            new_events = merge_live_native_contacts(actual_frame, new_events, cpp_driver)
+            apply_geometry_collection_fracture_response(actors, runtime_scene, new_events, frame_index, physics_status)
             if runner_ids and isinstance(actual_frame.get("objects"), dict):
                 for runner_id in runner_ids:
                     scripted = (frame.get("objects") or {}).get(runner_id)
@@ -7193,11 +8647,16 @@ def start_highres_viewport_capture(
                         actual_frame["objects"][runner_id] = {**scripted, "source": scripted.get("source") or "scripted_runtime_preview"}
             state["actual_trajectory"].append(actual_frame)
             state["contact_events"].extend(new_events)
-        else:
+        elif first_view_for_frame:
             apply_trajectory_frame(actors, dynamic_ids, frame, scene_origin, runtime_scene)
             apply_runtime_animation_segments(actors, runtime_scene, frame, physics_status)
-        frame_view = camera_view_for_frame(view, runtime_scene, frame_index, len(trajectory))
-        state["camera_track"].append(
+        if first_view_for_frame:
+            apply_surface_mesh_sequence_replay(actors, runtime_scene, frame_index, physics_status)
+            sync_runtime_visuals(actors)
+        view = view_outputs[state["view_index"]]
+        view_id = str(view.get("view_id") or view.get("id"))
+        frame_view = camera_view_for_frame(view, runtime_scene, frame_index, len(trajectory), state["actual_trajectory"])
+        state["camera_tracks"].setdefault(view_id, []).append(
             {
                 "frame": frame_index,
                 "time": frame_time_s(frame, frame_index),
@@ -7210,18 +8669,45 @@ def start_highres_viewport_capture(
         camera.set_actor_location(frame_view["location"], False, False)
         camera.set_actor_rotation(look_at_rotation(frame_view["location"], frame_view["target"]), False)
         camera.camera_component.set_editor_property("field_of_view", float(frame_view["fov"]))
+        if render_data_passes:
+            state["data_capture_in_progress"] = True
         try:
-            editor_subsystem.set_level_viewport_camera_info(frame_view["location"], look_at_rotation(frame_view["location"], frame_view["target"]))
-        except Exception:
-            pass
-        configure_clean_highres_viewport()
-        settle = settle_highres_viewport(0.0, RENDER_PER_FRAME_SETTLE_TICKS)
-        summary.setdefault("capture_readiness", {}).setdefault("per_frame_settles", []).append({"frame": frame_index, **settle})
-        path = frames_dir / f"frame_{frame_index:04d}.png"
-        submit_highres_screenshot(path, "frame")
+            if render_data_passes:
+                set_capture_view(actors, frame_view["location"], frame_view["target"], frame_view["fov"])
+                data_pass_frames.setdefault(view_id, []).append(
+                    export_depth_and_segmentation_frame(
+                        actors,
+                        runtime_scene,
+                        view_id,
+                        frame_index,
+                        data_pass_dirs,
+                    )
+                )
+            try:
+                editor_subsystem.set_level_viewport_camera_info(frame_view["location"], look_at_rotation(frame_view["location"], frame_view["target"]))
+            except Exception:
+                pass
+            configure_clean_highres_viewport()
+            settle = settle_highres_viewport(0.0, RENDER_PER_FRAME_SETTLE_TICKS)
+            summary.setdefault("capture_readiness", {}).setdefault("per_frame_settles", []).append({"frame": frame_index, "view_id": view_id, **settle})
+            path = view["frames_dir"] / f"frame_{frame_index:04d}.png"
+            submit_highres_screenshot(path, "frame")
+        finally:
+            if render_data_passes:
+                state["data_capture_in_progress"] = False
+
+    def advance_capture_cursor() -> None:
+        state["view_index"] += 1
+        if state["view_index"] < len(view_outputs):
+            return
+        state["view_index"] = 0
+        state["frame_index"] += 1
+        maybe_apply_deferred_impulse()
 
     def tick(delta_seconds: float):
         try:
+            if state.get("data_capture_in_progress") or state.get("capture_request_in_progress"):
+                return
             waiting_path = state.get("waiting_path")
             if waiting_path:
                 task_done = True
@@ -7246,8 +8732,7 @@ def start_highres_viewport_capture(
                         if waiting_kind == "probe":
                             handle_probe_complete(waiting_path)
                         else:
-                            state["frame_index"] += 1
-                            maybe_apply_deferred_impulse()
+                            advance_capture_cursor()
                 elif time.perf_counter() - state.get("requested_at", state["capture_started"]) > 20.0:
                     waiting_kind = state.get("waiting_kind") or "frame"
                     state["errors"].append({"frame": state["frame_index"], "error": f"timeout waiting for {waiting_path}", "kind": waiting_kind})
@@ -7257,8 +8742,7 @@ def start_highres_viewport_capture(
                     if waiting_kind == "probe":
                         state["probe_index"] += 1
                     else:
-                        state["frame_index"] += 1
-                        maybe_apply_deferred_impulse()
+                        advance_capture_cursor()
                 return
             if physics_enabled and not state["physics_ready"]:
                 now = time.perf_counter()
@@ -7266,15 +8750,15 @@ def start_highres_viewport_capture(
                     state["physics_last_rebind_attempt"] = now
                     rebind_runtime_actors_to_simulation_world(actors, runtime_scene, physics_status, timeout_s=0.0, record_failure=False)
                     if physics_status.get("game_world_count", 0) > 0 and physics_status.get("rebound_actor_ids"):
+                        set_simulation_world_paused(actors, physics_status, True)
+                        reset_runtime_actors_to_initial_state(actors, runtime_scene, physics_status)
                         state["physics_ready"] = True
-                        state["physics_started"] = time.perf_counter()
                         start_visible_physics_input()
                         summary["physics_capture"].update(physics_status)
                         write_summary(summary)
                 if not state["physics_ready"] and now - state["physics_wait_started"] > 12.0:
                     physics_status.setdefault("errors", []).append("physics_ready_timeout:no_pie_game_world")
                     state["physics_ready"] = True
-                    state["physics_started"] = time.perf_counter()
                     summary["physics_capture"].update(physics_status)
                     state["errors"].append({"frame": state.get("frame_index"), "error": "physics_ready_timeout:no_pie_game_world"})
                     write_summary(summary)
@@ -7343,7 +8827,6 @@ def main():
     actual_trajectory = []
     contact_events = []
     seen_contact_pairs: set[tuple[str, str]] = set()
-    physics_started = time.perf_counter()
     views = camera_view_specs(actors, runtime_scene)
     view_outputs = []
     for view in views:
@@ -7357,12 +8840,17 @@ def main():
     data_pass_frames: dict[str, list[dict]] = {
         str(view.get("view_id") or view.get("id")): [] for view in view_outputs
     }
+    first_frame_views: dict[str, dict] = {}
 
+    material_warmup = warm_up_surface_replay_materials(runtime_scene)
+    actors.setdefault("lighting", {})["surface_replay_material_warmup"] = material_warmup
+    write_progress_marker("surface_replay_material_warmup", json.dumps(material_warmup, sort_keys=True))
     warm_up_scene_capture(actors)
     write_progress_marker("warmup_complete")
     capture_started = time.perf_counter()
     runner_ids = [obj.get("id") for obj in (runtime_scene.get("dynamic_objects") or []) if obj.get("behavior") == "third_person_runner"] if runtime_scene else []
     for frame in trajectory:
+        frame_index = int(frame.get("frame", 0))
         if physics_enabled:
             cpp_status = physics_status.get("cpp_runtime_driver") or {}
             cpp_driver = actors.get("adp_physics_runtime_driver")
@@ -7371,12 +8859,12 @@ def main():
             apply_delayed_release_projectiles(actors, runtime_scene, frame, scene_origin, physics_status)
             if cpp_status.get("started") and cpp_driver:
                 try:
-                    cpp_driver.advance_capture(1.0 / max(FPS, 1), True)
-                    cpp_status["manual_step_count"] = int(cpp_status.get("manual_step_count") or 0) + 1
+                    steps = advance_cpp_runtime_driver(cpp_driver, actors, physics_status, runtime_scene, frame_index)
+                    cpp_status["manual_step_count"] = int(cpp_status.get("manual_step_count") or 0) + steps
                 except Exception as exc:
                     cpp_status.setdefault("errors", []).append(f"advance_capture:{exc}")
             else:
-                advance_physics_capture(actors, physics_status, 1.0 / max(FPS, 1))
+                advance_physics_capture(actors, physics_status, fixed_physics_step_s(frame_index, FPS))
             if runner_ids:
                 apply_trajectory_frame(actors, runner_ids, frame, scene_origin, runtime_scene)
             apply_delayed_release_projectiles(actors, runtime_scene, frame, scene_origin, physics_status)
@@ -7384,10 +8872,12 @@ def main():
                 actors,
                 runtime_scene,
                 int(frame["frame"]),
-                time.perf_counter() - physics_started,
+                frame_index / max(FPS, 1),
                 scene_origin,
                 seen_contact_pairs,
             )
+            new_events = merge_live_native_contacts(actual_frame, new_events, cpp_driver)
+            apply_geometry_collection_fracture_response(actors, runtime_scene, new_events, frame_index, physics_status)
             if runner_ids and isinstance(actual_frame.get("objects"), dict):
                 for runner_id in runner_ids:
                     scripted = (frame.get("objects") or {}).get(runner_id)
@@ -7397,9 +8887,10 @@ def main():
             contact_events.extend(new_events)
         else:
             apply_trajectory_frame(actors, dynamic_ids, frame, scene_origin, runtime_scene)
-        frame_index = int(frame.get("frame", 0))
+        apply_surface_mesh_sequence_replay(actors, runtime_scene, frame_index, physics_status)
+        sync_runtime_visuals(actors)
         for view in view_outputs:
-            frame_view = camera_view_for_frame(view, runtime_scene, frame_index, len(trajectory))
+            frame_view = camera_view_for_frame(view, runtime_scene, frame_index, len(trajectory), actual_trajectory)
             view_id = str(view.get("view_id") or view.get("id"))
             camera_tracks.setdefault(view_id, []).append(
                 {
@@ -7412,11 +8903,24 @@ def main():
                 }
             )
             set_capture_view(actors, frame_view["location"], frame_view["target"], frame_view["fov"])
+            if frame_index == 0:
+                first_frame_views[view_id] = frame_view
             capture_frame(actors, view["frames_dir"] / f"frame_{frame['frame']:04d}.exr")
             if RENDER_DATA_PASSES:
                 data_pass_frames.setdefault(view_id, []).append(
                     export_depth_and_segmentation_frame(actors, runtime_scene, view_id, frame_index, data_pass_dirs)
                 )
+        if frame_index == 0 and RENDER_DATA_PASSES:
+            recaptured = recapture_first_data_frame(
+                actors,
+                runtime_scene,
+                view_outputs,
+                first_frame_views,
+                data_pass_dirs,
+                frame_index,
+            )
+            for view_id, payload in recaptured.items():
+                data_pass_frames[view_id][-1] = payload
     write_progress_marker("capture_loop_complete", f"frames={len(trajectory)}")
     capture_seconds = round(time.perf_counter() - capture_started, 2)
     if physics_enabled:
@@ -7429,6 +8933,7 @@ def main():
         if actual_trajectory:
             validation = validate_runtime_scene(runtime_scene, actual_trajectory) if runtime_scene else validation
             trajectory = actual_trajectory
+            attach_geometry_collection_fracture_events(trajectory, physics_status)
             (OUTPUT_DIR / "trajectory.json").write_text(json.dumps(trajectory, indent=2), encoding="utf-8")
             (OUTPUT_DIR / "validation.json").write_text(json.dumps(validation, indent=2), encoding="utf-8")
 
@@ -7483,6 +8988,7 @@ def main():
         "height": HEIGHT,
         "fps": FPS,
         "duration": DURATION,
+        "timebase": runtime_timebase(runtime_scene),
         "asset_manifest_resolver": ASSET_MANIFEST_DATA.get("resolver"),
         "asset_database_assets": GITLAB_ONLY_ASSETS,
         "studio_scene_spec": {
@@ -7509,6 +9015,7 @@ def main():
         "spawned_assets": actors.get("spawned_assets", []),
         "runtime_actor_bounds": actors.get("runtime_actor_bounds", {}),
         "runtime_ground_offsets": actors.get("runtime_ground_offsets", {}),
+        "runtime_initial_transforms": actors.get("runtime_initial_transforms", {}),
         "chaos_runtime": actors.get("chaos_runtime", {}),
         "removed_map_actors": actors.get("removed_map_actors", []),
         "background_stage_actors": actors.get("background_stage_actors", []),
@@ -7519,7 +9026,7 @@ def main():
         "planned_validation": validate_runtime_scene(runtime_scene, simulate_runtime_scene(runtime_scene)) if runtime_scene and physics_enabled else validation,
         "physics_capture": {
             **physics_status,
-            "trajectory_source": analytic_solver_source(actors, runtime_scene) if analytic_contact_solver_enabled(actors, runtime_scene) else ("ue_chaos_transform_capture" if physics_enabled else "scripted_trajectory_replay"),
+            "trajectory_source": analytic_solver_source(actors, runtime_scene) if analytic_contact_solver_enabled(actors, runtime_scene) else ("adp_cpp_runtime_driver" if (physics_status.get("cpp_runtime_driver") or {}).get("started") else ("ue_chaos_transform_capture" if physics_enabled else str(runtime_physics_controls(runtime_scene).get("simulation_driver") or "scripted_trajectory_replay"))),
             "actual_frame_count": len(actual_trajectory),
             "contact_events": contact_events,
             "unique_contact_pairs": len({tuple(event.get("objects") or []) for event in contact_events}),

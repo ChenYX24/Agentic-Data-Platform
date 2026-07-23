@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+import json
+import tempfile
+from pathlib import Path
 
 from harness.assets.asset_intent import intent_from_object
+from harness.assets.asset_registry import AssetRegistry
 from harness.assets.asset_resolver import resolve_asset_intents
 
 
@@ -134,6 +138,70 @@ class HarnessAssetIntentTests(unittest.TestCase):
         self.assertEqual(len(result["assets"]), 24)
         self.assertTrue(all(row["selected_asset"] for row in result["assets"]))
         self.assertTrue(all(row["runtime_binding_requirements"] for row in result["assets"]))
+        self.assertTrue(all(row["selected_asset"]["quality_gate"]["status"] == "pass" for row in result["assets"]))
+
+    def test_role_disambiguates_generic_box_proxy(self) -> None:
+        result = resolve_asset_intents(
+            {"case_id": "support_asset", "objects": [{"id": "table", "role": "support", "shape": "box"}]}
+        )
+
+        row = result["assets"][0]
+        self.assertEqual(row["intent"]["query"], "support box")
+        self.assertEqual(row["selected_asset"]["asset_id"], "analytic_low_friction_table")
+
+    def test_explicit_analytic_policy_does_not_bind_an_unrelated_catalog_asset(self) -> None:
+        result = resolve_asset_intents(
+            {"case_id": "generated_rail", "objects": [{"id": "rail", "role": "support", "shape": "box", "asset_policy": "analytic_proxy"}]}
+        )
+
+        row = result["assets"][0]
+        self.assertIsNone(row["selected_asset"])
+        self.assertEqual(row["fallback_mode"], "harness_generate_analytic")
+
+    def test_resolver_skips_unlicensed_asset_and_preserves_provenance(self) -> None:
+        registry_data = {
+            "assets": [
+                {
+                    "asset_id": "unlicensed_ball",
+                    "tags": ["sphere", "ball"],
+                    "ue_path": "/Game/Unlicensed.Ball",
+                    "source_kind": "open_source",
+                    "source_uri": "https://example.invalid/ball",
+                    "license": "unknown",
+                    "quality_status": "approved",
+                    "collider": "sphere",
+                    "mass_kg": 1.0,
+                    "material": {},
+                    "collision_profile": "PhysicsActor",
+                },
+                {
+                    "asset_id": "approved_ball",
+                    "tags": ["sphere", "ball"],
+                    "ue_path": "/Engine/BasicShapes/Sphere.Sphere",
+                    "source_kind": "engine_builtin",
+                    "source_uri": "ue://Engine/BasicShapes/Sphere.Sphere",
+                    "license": "Unreal Engine EULA",
+                    "quality_status": "approved_proxy",
+                    "collider": "sphere",
+                    "mass_kg": 1.0,
+                    "material": {},
+                    "collision_profile": "PhysicsActor",
+                },
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registry.json"
+            path.write_text(json.dumps(registry_data), encoding="utf-8")
+            result = resolve_asset_intents(
+                {"case_id": "quality_gate", "objects": [{"id": "ball", "role": "passive_target", "shape": "sphere"}]},
+                registry=AssetRegistry(path),
+            )
+
+        row = result["assets"][0]
+        self.assertEqual(row["selected_asset"]["asset_id"], "approved_ball")
+        self.assertEqual(row["selected_asset"]["source_uri"], "ue://Engine/BasicShapes/Sphere.Sphere")
+        self.assertIn("missing_or_unverified_license", row["rejected_candidates"][0]["quality_gate"]["failure_codes"])
+        self.assertIn("missing_or_invalid_sha256", row["rejected_candidates"][0]["quality_gate"]["failure_codes"])
 
 
 if __name__ == "__main__":

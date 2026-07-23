@@ -1,0 +1,101 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "glass_panel_impact_fracture_ue_probe",
+  "capability_id": "brittle_impact_fracture",
+  "prompt": "Diagnostic: a heavy rigid sphere starts from a declared initial state and strikes a destructible board. A declared contact-triggered external-strain command initiates damage; Unreal Engine Chaos resolves the resulting Geometry Collection break.",
+  "scene": {
+    "layout": "destructible_board_impact_probe",
+    "duration_s": 2.5,
+    "coordinate_system": "z_up",
+    "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day",
+    "lighting_preset": "map_lights_balanced_fill",
+    "scene_bounds": {"center": [0.0, -0.35, 0.7], "extent": [1.2, 1.8, 1.0]}
+  },
+  "timebase": {
+    "physics_hz": 120,
+    "render_fps": 24,
+    "sample_phase": "initial_then_post_step"
+  },
+  "initial_state": {
+    "active_impactor": "striker",
+    "brittle_body_stationary_until_contact": true
+  },
+  "expected_physics": {
+    "duration_s": 2.5,
+    "coordinate_system": "z_up",
+    "impactor_object_id": "striker",
+    "brittle_object_id": "glass_panel",
+    "expected_contact_pair": ["striker", "glass_panel"],
+    "expected_min_fragment_count": 2,
+    "support": {"default": "impact_floor"},
+      "simulation_contract": {
+        "input_mode": "initial_state_only",
+        "state_solver": "ue_chaos",
+        "trajectory_role": "solver_output_render_cache",
+        "fracture_trigger": "contact_external_strain_command",
+        "autonomous_collision_damage": false
+      },
+    "camera": {"static": ["front_static"], "dynamic": []}
+  },
+  "objects": [
+    {
+      "id": "striker",
+      "role": "active_impactor",
+      "shape": "sphere",
+      "radius_m": 0.16,
+      "collider": "sphere",
+      "collision_profile": "PhysicsActor",
+      "mass_kg": 100000.0,
+      "material": {"static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.15},
+      "force_analytic_proxy": true,
+      "initial_position_m": [0.0, -1.4, 0.16],
+      "initial_velocity_m_s": [0.0, 2.0, 0.0]
+    },
+    {
+      "id": "glass_panel",
+      "role": "brittle_fracture_body",
+      "shape": "thin_box",
+      "size_m": [1.6, 0.6, 0.62],
+      "collider": "actor",
+      "collision_profile": "PhysicsActor",
+      "mass_kg": 15.0,
+      "material": {"static_friction": 0.45, "dynamic_friction": 0.32, "restitution": 0.18},
+      "asset_query": "BP_BoardDestructible",
+      "fracture_response": {
+        "mode": "contact_external_strain",
+        "impactor_id": "striker",
+        "external_strain": 750000.0,
+        "damage_thresholds": [500000.0, 50000.0, 5000.0],
+        "radius_m": 0.5,
+        "propagation_depth": 2,
+        "propagation_factor": 0.5
+      },
+      "initial_position_m": [0.0, 0.0, 0.31],
+      "initial_rotation_deg": [0.0, 0.0, 0.0],
+      "initial_velocity_m_s": [0.0, 0.0, 0.0]
+    },
+    {
+      "id": "impact_floor",
+      "role": "support",
+      "shape": "box",
+      "size_m": [3.2, 2.4, 0.1],
+      "collider": "box",
+      "collision_profile": "BlockAll",
+      "mass_kg": 100.0,
+      "material": {"static_friction": 0.5, "dynamic_friction": 0.4, "restitution": 0.05},
+      "force_analytic_proxy": true,
+      "fit_dynamic_plan": false,
+      "initial_position_m": [-0.25, 0.0, 0.0]
+    }
+  ],
+  "active_objects": ["striker"],
+  "passive_objects": ["glass_panel"],
+  "required_assets": ["BP_BoardDestructible and GC_SM_board1", "analytic impactor", "analytic support floor"],
+  "required_signals": ["trajectory", "native_collision_events", "fracture_events", "fragment_manifest", "fragment_state_hash", "camera_trajectory", "rgb", "depth", "instance_segmentation"],
+  "allowed_proxy_policy": "analytic_structural_colliders_plus_local_preview_destructible_asset",
+  "verification_rules": ["initial_rigid_state_only", "declared_contact_response", "native_impact_before_fracture", "real_geometry_collection_asset", "no_scripted_fragment_trajectory", "cross_pass_fragment_state_match"],
+  "verifier_expectation": {"status": "pass"},
+  "negative_or_boundary": false,
+  "should_pass": true,
+  "notes": "Single-camera Geometry Collection diagnostic only. RGB, metric depth, and instance segmentation have shown the same root-break frame in live UE/Chaos probes, but the case may not enter review/keep until a clean manifest rerun and native shard IDs/transforms/fragment manifest are exported. The local asset is a destructible garage board, not the final glass-panel asset."
+}

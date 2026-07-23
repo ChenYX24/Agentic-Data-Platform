@@ -1,0 +1,83 @@
+{
+  "schema_version": "harness_capability_v1",
+  "id": "soft_body_deformation",
+  "description": "Solve fixed-topology cloth or volumetric deformable solids outside Unreal Engine, preserve vertex/tetrahedral state as canonical truth, and replay the derived surface cache in Unreal for sensor capture.",
+  "physical_assumptions": [
+    "The first implementation is a fixed-topology mass-spring cloth without tearing or self-collision.",
+    "Gravity and rigid collider response are solver-owned after frame zero.",
+    "Pinned constraints and aerodynamic wind response are solver-owned when declared by the CaseSpec.",
+    "Volumetric elastic impact uses Genesis FEM with tetrahedral SAP floor contact; the surface mesh is derived from solver vertices.",
+    "The canonical vertex cache remains truth; OBJ or Unreal Geometry Cache assets are render proxies."
+  ],
+  "required_signals": [
+    "vertex_positions",
+    "vertex_velocities",
+    "triangle_topology",
+    "tetrahedral_topology",
+    "solver_timebase",
+    "rigid_collider_geometry",
+    "pinned_vertex_indices",
+    "wind_state",
+    "rgb",
+    "metric_depth",
+    "instance_segmentation"
+  ],
+  "required_assets": [
+    "two-sided cloth material",
+    "rigid collision object",
+    "optional anchor support",
+    "support surface"
+  ],
+  "verifier_rules": [
+    "fixed_topology",
+    "finite_vertex_state",
+    "pinned_constraint_stability",
+    "wind_axis_response",
+    "wind_speed_response_monotonicity",
+    "solid_compression_response",
+    "solid_volume_preservation",
+    "solid_floor_contact_and_rebound",
+    "post_event_motion_bound",
+    "youngs_modulus_compression_monotonicity",
+    "structural_edge_stretch_bound",
+    "rigid_collider_non_penetration",
+    "gravity_response",
+    "cache_timebase_sync"
+  ],
+  "failure_taxonomy": [
+    "non_finite_vertex_state",
+    "topology_changed",
+    "pinned_constraint_drift",
+    "wind_response_missing",
+    "insufficient_wind_speed_conditions",
+    "wind_response_not_monotonic",
+    "tetrahedral_topology_invalid",
+    "solid_volume_error_exceeded",
+    "solid_compression_missing",
+    "floor_contact_missing",
+    "solid_rebound_missing",
+    "post_event_motion_too_high",
+    "compression_response_not_monotonic",
+    "edge_stretch_exceeded",
+    "rigid_collider_penetration",
+    "gravity_response_missing",
+    "cache_timebase_mismatch"
+  ],
+  "repair_suggestions": [
+    "Increase solver substeps before lowering the physical stiffness.",
+    "When a high-wind endpoint exceeds the structural stretch hard gate, lower that endpoint instead of relaxing the gate.",
+    "Increase collision thickness or mesh resolution when face chords intersect a curved collider.",
+    "Reject a UE replay when its frame index or coordinate conversion differs from the canonical cache."
+  ],
+  "smoke_cases": [
+    "cases/soft_body/cloth_drape/v001_taichi_cloth_over_sphere.json",
+    "cases/soft_body/flag_wind/v001_taichi_pinned_flag_wind.json"
+  ],
+  "regression_cases": [
+    "cases/soft_body/flag_wind/v002_wind_speed_ofat/low_wind_3p0.json",
+    "cases/soft_body/flag_wind/v002_wind_speed_ofat/high_wind_6p5.json",
+    "cases/soft_body/elastic_collision/v001_youngs_modulus_ofat/low_e50k.json",
+    "cases/soft_body/elastic_collision/v001_youngs_modulus_ofat/mid_e100k.json",
+    "cases/soft_body/elastic_collision/v001_youngs_modulus_ofat/high_e200k.json"
+  ]
+}

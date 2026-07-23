@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from harness.assets.asset_resolver import resolve_asset_intents
 from harness.core.artifact_schema import write_json
 from harness.core.case_spec import load_case_spec
+from harness.core.workspace import workspace_path
 from harness.planning.static_scene_builder import build_static_scene_layout
 from harness.verification.static_scene_verifier import verify_static_scene_layout
 
@@ -33,7 +34,7 @@ def main() -> int:
     case_path = Path(args.case_spec)
     case = load_case_spec(case_path)
     requested_views = [item.strip() for item in args.views.split(",") if item.strip()]
-    output_dir = Path(args.output_dir) if args.output_dir else ROOT / "runs" / "static_scene" / case.case_id
+    output_dir = workspace_path(args.output_dir, default_relative=Path("runs") / "static_scene" / case.case_id)
     output_dir.mkdir(parents=True, exist_ok=True)
     case_dict = case.data
     asset_resolution = resolve_asset_intents(case_dict, top_k=args.top_k)

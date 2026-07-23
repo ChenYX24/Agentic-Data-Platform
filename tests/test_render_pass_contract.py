@@ -57,6 +57,37 @@ class RenderPassContractTests(unittest.TestCase):
             self.assertFalse(report["depth_ready"])
             self.assertIn("F_DEPTH_MISSING", {item["code"] for item in report["failures"]})
 
+    def test_rgb_only_diagnostic_does_not_claim_missing_depth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            plan = plan_cameras_for_scene(SceneBounds(center=(0, 0, 0.5), extent=(2, 2, 1)), requested_views=["event_closeup"])
+            view_dir = run_dir / "views" / "event_closeup"
+            view_dir.mkdir(parents=True)
+            (view_dir / "rgb.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+            from harness.core.artifact_schema import write_json
+            write_json(
+                view_dir / "meta.json",
+                {
+                    "source_native_view_id": "event_closeup",
+                    "frame_count_rgb": 2,
+                    "fps": 24,
+                    "camera_state_source": "ue_runtime_echo",
+                },
+            )
+
+            manifest = write_render_contract_artifacts(
+                run_dir,
+                backend="ue",
+                case_id="rgb_smoke",
+                camera_plan=plan,
+                render_passes=["rgb"],
+                allow_placeholders=False,
+                source="test_rgb_smoke",
+            )
+
+            self.assertTrue(manifest["render_pass_valid"])
+            self.assertEqual(manifest["depth_source"], "not_requested")
+
 
 if __name__ == "__main__":
     unittest.main()

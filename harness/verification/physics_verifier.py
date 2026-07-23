@@ -19,6 +19,7 @@ from harness.verification.falling_verifier import verify_falling
 from harness.verification.impulse_chain_verifier import verify_impulse_chain
 from harness.verification.mass_ratio_verifier import verify_mass_ratio
 from harness.verification.magnetic_verifier import verify_magnetic
+from harness.verification.particle_cache_verifier import verify_particle_cache
 from harness.verification.projectile_verifier import verify_projectile
 from harness.verification.ramp_verifier import verify_ramp
 from harness.verification.rolling_verifier import verify_rolling
@@ -31,6 +32,20 @@ class PhysicsVerifier:
     def verify_run_dir(self, run_dir: str | Path, *, write: bool = False) -> dict[str, Any]:
         run_dir = Path(run_dir)
         case_spec = read_json(run_dir / "case_spec.json")
+        if canonical_capability_id(str(case_spec["capability_id"])) == "fluid_particle_dynamics":
+            report = verify_fluid_run(case_spec, run_dir)
+            if write:
+                write_json(run_dir / "harness_verifier.json", report)
+                write_json(run_dir / "verifier_report.json", report)
+                write_json(
+                    run_dir / "verifier.json",
+                    {
+                        "reference_ready": False,
+                        "physics_ready": report["status"] == "pass",
+                        "harness_verifier": report,
+                    },
+                )
+            return report
         ue_backend_report_path = run_dir / "ue_backend_report.json"
         if ue_backend_report_path.exists():
             ue_backend_report = read_json(ue_backend_report_path)
@@ -122,7 +137,7 @@ class PhysicsVerifier:
 
 
 def resolve_output_dir(run_dir: Path) -> Path:
-    for name in ("fallback_output", "ue_output", "debug_preview"):
+    for name in ("fallback_output", "ue_output", "genesis_sph_output", "debug_preview"):
         candidate = run_dir / name
         if candidate.exists():
             return candidate
@@ -144,3 +159,47 @@ def artifact_completeness(output_dir: str | Path | None, trajectory: list[dict[s
         "contact_events_file": (output_dir / "contact_events.json").exists(),
         "contact_events": any(frame.get("contacts") for frame in trajectory),
     }
+
+
+def verify_fluid_run(case_spec: dict[str, Any], run_dir: Path) -> dict[str, Any]:
+    candidates = (run_dir / "particle_cache.json", run_dir / "genesis_sph_output" / "particle_cache.json")
+    cache_path = next((path for path in candidates if path.is_file()), None)
+    cache = read_json(cache_path) if cache_path else {}
+    particle_report = verify_particle_cache(cache, root=cache_path.parent if cache_path else run_dir)
+    first = (particle_report.get("failures") or [None])[0]
+    failure_type = str(first["code"]) if isinstance(first, dict) else None
+    first_failure = None
+    if isinstance(first, dict):
+        first_failure = {
+            "object_id": "fluid_particles",
+            "frame": int(first.get("frame") or 0),
+            "time": None,
+            "metric": str(first.get("code") or "particle_cache"),
+            "value": first.get("value"),
+        }
+    output_dir = resolve_output_dir(run_dir)
+    checks = particle_report.get("checks") if isinstance(particle_report.get("checks"), dict) else {}
+    completeness = {
+        "particle_cache": cache_path is not None,
+        "particle_count": int(checks.get("particle_count") or 0),
+        "frame_count": int(checks.get("frame_count") or 0),
+        "surface_sequence": bool(checks.get("frame_count")) and checks.get("surface_frame_count") == checks.get("frame_count"),
+        "summary": (output_dir / "summary.json").is_file(),
+        "run_readiness": (output_dir / "run_readiness.json").is_file(),
+        "render_pass_manifest": (output_dir / "render_pass_manifest.json").is_file(),
+        "render_manifest": (output_dir / "render_manifest.json").is_file(),
+        "video": (run_dir / "video.mp4").is_file() and (run_dir / "video.mp4").stat().st_size > 0,
+        "trajectory": (run_dir / "trajectory.json").is_file(),
+        "contact_events_file": (run_dir / "contact_events.json").is_file(),
+        "contact_events_available": False,
+    }
+    return verifier_report(
+        case_id=str(case_spec["case_id"]),
+        capability_id="fluid_particle_dynamics",
+        status="pass" if particle_report["status"] == "pass" else "fail",
+        failure_type=failure_type,
+        first_failure=first_failure,
+        evidence=[{"type": "particle_cache", "path": str(cache_path.relative_to(run_dir))}] if cache_path else [],
+        repair_suggestions=[] if failure_type is None else ["Inspect particle_cache.json and rerun the Genesis SPH case after correcting the first failed invariant."],
+        artifact_completeness=completeness,
+    )

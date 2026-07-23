@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import statistics
 from typing import Any
 
 
@@ -81,6 +82,7 @@ def verify_elastic_constraint(case_spec: dict[str, Any], trajectory: list[dict[s
         return "F4_causality_violation", detail, evidence
 
     max_extension_observed = max(float(sample["extension"]) for sample in samples)
+    motion = oscillation_metrics(samples, max_index, expected)
     evidence.append(
         {
             "anchor_object_id": anchor_id,
@@ -90,9 +92,39 @@ def verify_elastic_constraint(case_spec: dict[str, Any], trajectory: list[dict[s
             "max_allowed_extension_m": round(max_extension, 6),
             "best_rebound_velocity_toward_anchor_m_s": round(best_rebound, 6),
             "constraint_event_count": len(trace_events),
+            **motion,
         }
     )
     return None, None, evidence
+
+
+def oscillation_metrics(samples: list[dict[str, Any]], max_index: int, expected: dict[str, Any]) -> dict[str, Any]:
+    distances = [float(sample["distance"]) for sample in samples]
+    tail = distances[-max(3, len(distances) // 10) :]
+    equilibrium = statistics.median(tail)
+    minima = [index for index in range(max_index + 1, len(distances) - 1) if distances[index] <= distances[index - 1] and distances[index] < distances[index + 1]]
+    maxima = [index for index in range(max_index + 1, len(distances) - 1) if distances[index] >= distances[index - 1] and distances[index] > distances[index + 1]]
+    rebound_index = minima[0] if minima else min(range(max_index, len(distances)), key=distances.__getitem__)
+    period_s = frame_time(samples[maxima[0]]["frame"]) - frame_time(samples[max_index]["frame"]) if maxima else None
+    position_tolerance = float(expected.get("settling_position_tolerance_m") or 0.01)
+    speed_tolerance = float(expected.get("settling_speed_tolerance_m_s") or 0.05)
+    radial_speeds = [abs(velocity_toward_anchor(sample["anchor_pos"], sample["body_pos"], sample["body_velocity"])) for sample in samples]
+    settling_time = next(
+        (
+            frame_time(samples[index]["frame"])
+            for index in range(max_index, len(samples))
+            if all(abs(distances[later] - equilibrium) <= position_tolerance and radial_speeds[later] <= speed_tolerance for later in range(index, len(samples)))
+        ),
+        None,
+    )
+    return {
+        "equilibrium_distance_m": round(equilibrium, 6),
+        "first_peak_to_peak_amplitude_m": round(distances[max_index] - distances[rebound_index], 6),
+        "observed_oscillation_period_s": round(period_s, 6) if period_s is not None else None,
+        "settling_time_s": round(settling_time, 6) if settling_time is not None else None,
+        "settling_position_tolerance_m": round(position_tolerance, 6),
+        "settling_speed_tolerance_m_s": round(speed_tolerance, 6),
+    }
 
 
 def matching_constraint_event(frame: dict[str, Any], anchor_id: str, body_id: str) -> dict[str, Any] | None:

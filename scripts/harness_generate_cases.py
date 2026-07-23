@@ -1058,7 +1058,7 @@ def elastic_constraint_case(template: dict[str, Any], params: dict[str, Any], *,
     damping = float(params["damping_ratio"])
     mass = float(params["payload_mass_kg"])
     anchor_z = round(rest_length + 0.8, 4)
-    payload_z = round(anchor_z - rest_length + 0.12, 4)
+    payload_z = round(float(params.get("payload_initial_height_m", anchor_z - rest_length + 0.12)), 4)
     expected = {
         "coordinate_system": "z_up",
         "anchor_object_id": "anchor",
@@ -1070,6 +1070,7 @@ def elastic_constraint_case(template: dict[str, Any], params: dict[str, Any], *,
         "constraint_stiffness_n_m": round(stiffness, 4),
         "damping_ratio": round(damping, 4),
         "payload_mass_kg": round(mass, 4),
+        "payload_initial_height_m": payload_z,
     }
     objects = [
         {

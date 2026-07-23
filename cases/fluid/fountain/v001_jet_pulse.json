@@ -1,0 +1,58 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "fountain_v001_jet_pulse",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A narrow vertical water column is launched upward from the center of a basin, forms a fountain-like jet, then falls and settles under gravity.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "vertical_fountain_pulse",
+    "minimum_initial_flow_speed_m_s": 2.0,
+    "minimum_jet_rise_m": 0.14,
+    "minimum_final_surface_component_fraction": 0.80
+    ,"maximum_final_surface_area_to_volume_ratio_1_m": 62.0
+    ,"maximum_final_surface_volume_relative_error": 0.15
+  },
+  "objects": [
+    {
+      "id": "water_jet",
+      "role": "fluid",
+      "initial_position_m": [0.0, 0.0, 0.20],
+      "initial_condition": {
+        "type": "bounded_volume",
+        "shape": "cylinder",
+        "radius_m": 0.11,
+        "height_m": 0.36,
+        "euler_deg": [0.0, 0.0, 0.0],
+        "velocity_field": {
+          "type": "uniform",
+          "velocity_m_s": [0.0, 0.0, 2.0]
+        }
+      }
+    },
+    {
+      "id": "fountain_basin",
+      "role": "rigid_container",
+      "floor_z_m": 0.0,
+      "wall_half_extent_m": 0.32
+    }
+  ],
+  "active_objects": ["water_jet"],
+  "passive_objects": ["fountain_basin"],
+  "required_assets": ["fountain basin", "round nozzle", "water jet"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 2.5,
+    "particle_size_m": 0.015,
+    "pre_roll_s": 0.0
+    ,"surface_reconstruction": {
+      "smoothing_length_in_particle_radii": 4.0,
+      "cube_size_in_particle_radii": 0.75,
+      "iso_surface_threshold": 0.175
+    }
+  },
+  "notes": "This is deliberately a finite jet pulse, not a continuous emitter. Continuous fountain v002 remains blocked until active-particle IDs, injection mass flow, recycling, and per-frame lineage are verified."
+}

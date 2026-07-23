@@ -7,11 +7,13 @@
     "readiness_gate",
     "dataset_packaging"
   ],
-  "description": "Package only verifier-gated runtime artifacts into dataset-ready sample layouts with lineage, hashes, signal availability, and failure visibility.",
+  "description": "Package verifier-gated selected runs into condition-aware, five-camera dataset and review layouts with per-run and bundle overalls, lineage, hashes, signal availability, and failure visibility.",
   "physical_assumptions": [
     "Dataset samples must preserve the link from prompt/case to scene, assets, physics controls, runtime outputs, and verifier decision.",
     "Failed or incomplete samples should remain auditable but not training-ready.",
-    "Generated media, local assets, and runs are local artifacts and should not be committed to the harness repo."
+    "Generated media, local assets, and runs are local artifacts and should not be committed to the harness repo.",
+    "Multiple render attempts inside one session are candidates for one selected source run, not independent physics runs.",
+    "Different exact inputs require explicit condition labels and are causal variants rather than quality-winner candidates."
   ],
   "required_signals": [
     "case_spec",
@@ -19,7 +21,10 @@
     "artifact_manifest",
     "run_readiness",
     "verifier_report",
-    "render_sync_report"
+    "render_sync_report",
+    "comparison_fingerprint",
+    "comparison_condition",
+    "acquisition_fingerprint"
   ],
   "required_assets": [
     "verified run directory",
@@ -29,7 +34,11 @@
     "Manifest references only existing files.",
     "Readiness fields agree with verifier and render sync reports.",
     "Sample source type and proxy status are explicit.",
-    "Generated artifacts are excluded from public commits."
+    "Generated artifacts are excluded from public commits.",
+    "Formal deliveries contain at least three selected runs and the same three static plus two moving cameras for every run.",
+    "Each run has RGB/depth/segmentation overalls, and the bundle has one additional overall per modality.",
+    "Differing fingerprints have a one-to-one mapping to declared condition labels.",
+    "All selected runs share one camera/render acquisition fingerprint and RGB frame-count profile."
   ],
   "failure_taxonomy": [
     "F5_weak_visual_evidence",
@@ -39,7 +48,9 @@
   "repair_suggestions": [
     "Fix missing runtime artifacts before packaging.",
     "Keep failed samples in reports but outside training-ready shards.",
-    "Use hashes and manifest paths to detect accidental artifact drift."
+    "Use hashes and manifest paths to detect accidental artifact drift.",
+    "Add or correct --condition when intentionally packaging different parameter inputs.",
+    "Regenerate missing per-run overalls before publishing the bundle."
   ],
   "smoke_cases": [
     "cases/billiards/low_speed_single_contact.json"

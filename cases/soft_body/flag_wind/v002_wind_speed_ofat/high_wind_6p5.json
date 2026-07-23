@@ -1,0 +1,88 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "pinned_flag_wind_v002_high_6p5",
+  "capability_id": "soft_body_deformation",
+  "prompt": "A rectangular fabric flag is fixed along its left edge to a rigid pole and deforms freely under gravity and a gusting crosswind without detaching or stretching excessively.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "phenomenon": "pinned_cloth_aerodynamic_wind_response",
+    "maximum_structural_edge_stretch_ratio": 1.25,
+    "maximum_pinned_vertex_displacement_m": 0.0001,
+    "minimum_mean_wind_axis_displacement_m": 0.12,
+    "minimum_final_vertical_span_m": 0.8,
+    "penetration_tolerance_m": 0.002
+  },
+  "objects": [
+    {
+      "id": "flag",
+      "role": "deformable_cloth",
+      "shape": "rectangular_grid",
+      "size_m": [1.5, 1.0],
+      "initial_center_m": [0.0, 0.0, 1.25],
+      "initial_orientation": "vertical_xz",
+      "pinned_boundary": "negative_u",
+      "grid_resolution": 25,
+      "total_mass_kg": 0.32,
+      "material": {
+        "structural_stiffness_n_m": 95.0,
+        "shear_stiffness_n_m": 58.0,
+        "bending_stiffness_n_m": 7.0,
+        "spring_damping_kg_s": 0.006,
+        "air_damping_1_s": 0.55
+      }
+    },
+    {
+      "id": "wind",
+      "role": "wind_field",
+      "velocity_m_s": [0.0, 6.5, 0.0],
+      "air_density_kg_m3": 1.225,
+      "drag_coefficient": 1.15,
+      "gust_amplitude": 0.22,
+      "gust_frequency_hz": 0.7
+    },
+    {
+      "id": "flagpole",
+      "role": "anchor_support",
+      "shape": "cylinder",
+      "position_m": [-0.79, 0.0, 1.25],
+      "radius_m": 0.035,
+      "height_m": 2.5
+    },
+    {
+      "id": "floor",
+      "role": "support_surface",
+      "shape": "plane",
+      "z_m": 0.0,
+      "friction": 0.2,
+      "restitution": 0.0
+    }
+  ],
+  "active_objects": ["flag"],
+  "passive_objects": ["wind", "flagpole", "floor"],
+  "required_assets": ["two-sided woven flag material", "rigid flagpole", "outdoor ground"],
+  "required_signals": ["vertex_positions", "vertex_velocities", "triangle_topology", "pinned_vertex_indices", "wind_state", "solver_timebase", "surface_mesh_sequence", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 4.0,
+    "substeps_per_frame": 100,
+    "constraint_collision_thickness_m": 0.012,
+    "arch": "cpu",
+    "seed": 20260721
+  },
+  "camera_overrides": {
+    "event_closeup": {
+      "location": [-2.0, -2.5, 1.55],
+      "target": [0.0, 0.15, 1.2],
+      "fov": 52.0
+    }
+  },
+  "sweep_metadata": {
+    "parameter": "wind_speed_m_s",
+    "value": 6.5,
+    "comparison": "ofat",
+    "baseline_case": "cases/soft_body/flag_wind/v001_taichi_pinned_flag_wind.json"
+  },
+  "notes": "High-wind endpoint. Only wind velocity magnitude differs from the 5.5 m/s kept baseline; 6.5 m/s preserves the structural stretch hard gate."
+}

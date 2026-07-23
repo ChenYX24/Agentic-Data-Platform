@@ -153,6 +153,7 @@ activemq-data/
 config/model_client.local.json
 configs/model_client.local.json
 .venv
+.venv-*/
 env/
 venv/
 ENV/
@@ -163,6 +164,7 @@ venv.bak/
 runs/
 outputs/
 artifacts/
+/videos/
 agent-docs/
 cases/generated/
 _local_inputs/
@@ -267,6 +269,8 @@ logs/
 
 # Agent working memory and generated reports are local-only.
 agent-docs/
+ACTIVE_CONTEXT.md
+MEMORY.md
 _local_inputs/
 
 # Material library payloads (metadata/manifests are tracked under assets/)

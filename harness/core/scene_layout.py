@@ -9,6 +9,9 @@ from harness.assets.asset_intent import intent_from_object
 SCENE_LAYOUT_SCHEMA_VERSION = "harness_scene_layout_v1"
 SUPPORT_ROLES = {"support", "floor", "ground", "table", "ramp", "slope_surface", "inclined_plane"}
 DYNAMIC_ABOVE_SUPPORT_ROLES = {
+    "active_chain_driver",
+    "constrained_chain_body",
+    "constraint_anchor",
     "falling_body",
     "stack_block",
     "projectile",
@@ -16,6 +19,8 @@ DYNAMIC_ABOVE_SUPPORT_ROLES = {
     "launched_body",
     "elastic_payload",
     "bungee_payload",
+    "elastic_constraint_anchor",
+    "elastic_constrained_body",
     "wind_drift_body",
     "wind_subject",
     "balloon",
@@ -82,12 +87,29 @@ def build_object_node(obj: dict[str, Any], asset_row: dict[str, Any] | None = No
             "collider": collider,
             "collision_profile": collision_profile,
             "material": material,
+            "linear_damping": obj.get("linear_damping"),
+            "angular_damping": obj.get("angular_damping"),
+            "enable_gravity": obj.get("enable_gravity"),
+            "use_ccd": obj.get("use_ccd"),
+            "initial_angular_velocity_rad_s": obj.get("initial_angular_velocity_rad_s"),
             "kinematic": bool(obj.get("kinematic", is_support_role(intent.role))),
             "proxy": bool(selected_asset.get("proxy")) if isinstance(selected_asset, dict) else asset_row is not None and asset_row.get("fallback_reason") is not None,
         },
         "asset_binding": {
             "selected_asset_id": asset_id(selected_asset),
             "selected_asset_ue_path": selected_asset.get("ue_path") if isinstance(selected_asset, dict) else None,
+            "asset_kind": (
+                selected_asset.get("asset_kind")
+                or selected_asset.get("type")
+                or selected_asset.get("class_name")
+            ) if isinstance(selected_asset, dict) else None,
+            "source_kind": selected_asset.get("source_kind") if isinstance(selected_asset, dict) else "analytic_proxy",
+            "source_uri": selected_asset.get("source_uri") if isinstance(selected_asset, dict) else None,
+            "license": selected_asset.get("license") if isinstance(selected_asset, dict) else None,
+            "sha256": selected_asset.get("sha256") if isinstance(selected_asset, dict) else None,
+            "preserve_authored_scale": bool(selected_asset.get("preserve_authored_scale")) if isinstance(selected_asset, dict) else False,
+            "authored_size_m": selected_asset.get("authored_size_m") if isinstance(selected_asset, dict) else None,
+            "quality_gate": selected_asset.get("quality_gate") if isinstance(selected_asset, dict) else None,
             "fallback_reason": asset_row.get("fallback_reason") if asset_row else "asset resolution missing",
             "runtime_binding_requirements": asset_row.get("runtime_binding_requirements", []) if asset_row else [],
         },

@@ -117,9 +117,11 @@ def support_relation(node: dict[str, Any], support_node: dict[str, Any] | None) 
             "status": "missing_support",
             "vertical_gap_m": None,
         }
-    bottom = float((node.get("bounds") or {}).get("bottom_z", 0.0))
-    support_top = float((support_node.get("bounds") or {}).get("top_z", 0.0))
-    gap = round(bottom - support_top, 6)
+    gap = inclined_surface_gap(node, support_node)
+    if gap is None:
+        bottom = float((node.get("bounds") or {}).get("bottom_z", 0.0))
+        support_top = float((support_node.get("bounds") or {}).get("top_z", 0.0))
+        gap = round(bottom - support_top, 6)
     if gap < -0.01:
         status = "penetrating_support"
     elif abs(gap) <= 0.01:
@@ -136,6 +138,21 @@ def support_relation(node: dict[str, Any], support_node: dict[str, Any] | None) 
     }
 
 
+def inclined_surface_gap(node: dict[str, Any], support_node: dict[str, Any]) -> float | None:
+    shape_role = f"{support_node.get('shape', '')} {support_node.get('role', '')}".casefold()
+    if not any(token in shape_role for token in ("ramp", "inclined", "slope")):
+        return None
+    pitch = math.radians(float(((support_node.get("transform") or {}).get("rotation_deg") or [0.0])[0]))
+    normal = [math.sin(pitch), 0.0, math.cos(pitch)]
+    node_position = object_position(node)
+    support_position = object_position(support_node)
+    center_delta = [node_position[axis] - support_position[axis] for axis in range(3)]
+    support_half_thickness = object_extents(support_node)[2]
+    node_extents = object_extents(node)
+    subject_radius = max(node_extents) if "sphere" in str(node.get("shape") or "").casefold() else sum(abs(normal[axis]) * node_extents[axis] for axis in range(3))
+    return round(sum(center_delta[axis] * normal[axis] for axis in range(3)) - support_half_thickness - subject_radius, 6)
+
+
 def find_overlap_pairs(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     pairs: list[dict[str, Any]] = []
     collidable = [node for node in nodes if node.get("physics_critical") and not is_support_role(str(node.get("role")))]
@@ -144,26 +161,31 @@ def find_overlap_pairs(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
             left_pos = object_position(left)
             right_pos = object_position(right)
             distance = math.dist(left_pos, right_pos)
-            left_radius = horizontal_radius(left)
-            right_radius = horizontal_radius(right)
-            threshold = max((left_radius + right_radius) * 0.92, 0.01)
-            if distance < threshold:
+            left_extents = object_extents(left)
+            right_extents = object_extents(right)
+            axis_thresholds = [
+                max((left_extents[axis] + right_extents[axis]) * 0.92, 0.001)
+                for axis in range(3)
+            ]
+            axis_distances = [abs(left_pos[axis] - right_pos[axis]) for axis in range(3)]
+            if all(axis_distances[axis] < axis_thresholds[axis] for axis in range(3)):
                 pairs.append(
                     {
                         "object_ids": [left["object_id"], right["object_id"]],
                         "distance_m": round(distance, 6),
-                        "threshold_m": round(threshold, 6),
+                        "axis_distances_m": [round(value, 6) for value in axis_distances],
+                        "axis_thresholds_m": [round(value, 6) for value in axis_thresholds],
                     }
                 )
     return pairs
 
 
-def horizontal_radius(node: dict[str, Any]) -> float:
+def object_extents(node: dict[str, Any]) -> list[float]:
     extents = (node.get("bounds") or {}).get("extents_m") or [0.0, 0.0, 0.0]
     if not isinstance(extents, list):
-        return 0.0
-    padded = [*extents, 0.0, 0.0]
-    return max(float(padded[0]), float(padded[1]))
+        return [0.0, 0.0, 0.0]
+    padded = [*extents, 0.0, 0.0, 0.0]
+    return [float(padded[0]), float(padded[1]), float(padded[2])]
 
 
 def normalize_edges(raw_edges: Any) -> list[list[str]]:

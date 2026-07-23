@@ -49,6 +49,15 @@ class StaticScenePlacementTests(unittest.TestCase):
         self.assertEqual(report["failure_type"], "F3_invalid_initial_physics_state")
         self.assertEqual(report["first_failure"]["metric"], "initial_overlap_pair")
 
+    def test_thin_panel_does_not_use_horizontal_bounding_circle_for_overlap(self) -> None:
+        from harness.assets.asset_resolver import resolve_asset_intents
+        from harness.planning.static_scene_builder import build_static_scene_layout
+
+        case = self.load_case("cases/fracture/glass_energy_response_matrix/glass_panel_e16_shatter.json")
+        layout = build_static_scene_layout(case, asset_resolution=resolve_asset_intents(case))
+
+        self.assertEqual(layout["overlap_pairs"], [])
+
     def test_static_scene_verifier_rejects_missing_physics_asset_binding(self) -> None:
         from harness.planning.static_scene_builder import build_static_scene_layout
         from harness.verification.static_scene_verifier import verify_static_scene_layout
@@ -77,6 +86,43 @@ class StaticScenePlacementTests(unittest.TestCase):
         self.assertEqual(relation["object_id"], "falling_block")
         self.assertEqual(relation["support_id"], "floor")
         self.assertIn(relation["status"], {"above_support", "contact_at_rest"})
+
+    def test_elastic_anchor_and_suspended_payload_are_valid_free_bodies(self) -> None:
+        from harness.assets.asset_resolver import resolve_asset_intents
+        from harness.planning.static_scene_builder import build_static_scene_layout
+        from harness.verification.static_scene_verifier import verify_static_scene_layout
+
+        case = self.load_case("cases/elastic_constraint/bungee_rebound.json")
+        layout = build_static_scene_layout(case, asset_resolution=resolve_asset_intents(case))
+        report = verify_static_scene_layout(case, layout)
+
+        self.assertEqual(report["status"], "pass", report)
+        self.assertEqual(
+            {row["object_id"]: row["status"] for row in layout["support_relations"]},
+            {"anchor": "free_body_allowed", "payload": "free_body_allowed"},
+        )
+
+    def test_newton_cradle_anchors_and_balls_are_valid_suspended_bodies(self) -> None:
+        from harness.assets.asset_resolver import resolve_asset_intents
+        from harness.planning.static_scene_builder import build_static_scene_layout
+        from harness.verification.static_scene_verifier import verify_static_scene_layout
+
+        case = self.load_case("cases/rigid_collision/newton_cradle/v001_release_angle_ofat/release_25deg.json")
+        layout = build_static_scene_layout(case, asset_resolution=resolve_asset_intents(case))
+        report = verify_static_scene_layout(case, layout)
+
+        self.assertEqual(report["status"], "pass", report)
+        self.assertTrue(all(row["status"] == "above_support" for row in layout["support_relations"]))
+
+    def test_inclined_ramp_uses_surface_normal_for_support_gap(self) -> None:
+        from harness.planning.static_scene_builder import build_static_scene_layout
+
+        case = self.load_case("cases/rigid_motion/ramp_roll_slide/v001_friction_regime_ofat/medium_friction_partial_roll.json")
+        layout = build_static_scene_layout(case)
+
+        relation = next(row for row in layout["support_relations"] if row["object_id"] == "ramp_subject")
+        self.assertEqual(relation["status"], "contact_at_rest")
+        self.assertAlmostEqual(relation["vertical_gap_m"], 0.002, places=4)
 
     def test_static_scene_cli_writes_layout_and_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

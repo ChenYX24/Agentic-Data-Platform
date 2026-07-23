@@ -116,7 +116,7 @@ main 分支只保留 harness 主路径：
 - code: `harness/`, `scripts/harness_*.py`, `scripts/native_ue_physics_phenomena_scene.py`
 - contracts: `capabilities/`, `cases/`, `config/harness_capability_profile.json`
 - UE support: `ue_template/`
-- docs/tests: `docs/`, `tests/`
+- docs/tests/agent entry: `docs/`, `tests/`, `skill/`
 
 不进入 main：
 
@@ -136,6 +136,13 @@ python3.13 scripts/harness_generate_cases.py \
 
 `cases/generated/` 是本地产物，不进入 public commit。
 
+## Case Navigation Contract
+
+- 仓库 `cases/TREE.md` 由 `scripts/harness_case_tree.py` 从全部 JSON CaseSpec/模板生成，解释每个输入目录、Case 和应由 verifier 记住的不变量。
+- 本地 `$SIM_HARNESS_WORKSPACE/cases/TREE.md` 由同一命令加 `--workspace-root` 生成，只展示 `physics/scenario/version` 三层语义，并统一解释 `variants/runs/ue_runs/probes/overall/delivery/inputs/reference/representatives`。其中 `variants/<variant>/{rgb,depth,segmentation,overall}` 是面向人和后续自动化的规范视图，canonical run 仍由 manifest 的 `source_run` 指向。
+- 时间戳、attempt 和 camera/pass 不得继续升格为 case 语义层；它们只能存在于版本内部 manifest/index。
+- `python scripts/harness_case_tree.py --check --workspace-root "$SIM_HARNESS_WORKSPACE"` 是新增、删除、keep/reject 和 probe 清理后的导航关卡。
+
 ## Runtime Backend Abstraction
 
 Backend contract 位于 `harness/runtime/`：
@@ -144,8 +151,13 @@ Backend contract 位于 `harness/runtime/`：
 |---|---|---|
 | `fallback` | 可运行 | deterministic toy trajectory，只能验证 schema/invariant，不代表真实 UE |
 | `ue` | fail-fast contract | 未配置时必须返回 `F6_runtime_or_render_failure`，不能 silent fallback |
+| `genesis_sph` | 隔离原型 | 已输出 canonical particle cache、逐帧 surface、统一 artifact/readiness/verifier；在 UE 多模态耦合完成前不得宣称 reference-ready |
 
 所有 backend 都应写统一 artifact directory，让 verifier 不依赖具体执行器。
+
+Genesis 的 `particle_cache.json` 是流体状态真值；统一 `trajectory.json` 只是每帧粒子质心/平均速度投影。当前 solver 未导出粒子-盆体接触事件，因此 `contact_events.json` 明确为空、readiness 中 `contact_events_ready=false`，不能把空文件解释为“确认没有接触”。
+
+PhysInOne 对照确认液体画质是完整交换链问题：其液体使用 SPH/Doriflow，特殊材料使用 Taichi MPM，渲染同时产出多机位 RGB、depth、mask、trajectory/material/camera truth。当前 Harness 的 Genesis 粒子/cache 可继续作为 solver truth，但 SplashSurf OBJ→UE 的 surface/material/lighting 与 instance pass 尚未达到可见性门；baseline 通过前不运行落高矩阵。后续按 `solver truth → per-frame surface reconstruction → Blender/UE render adapter → sensors` 分层，允许流体使用 Blender/Houdini renderer，不强制所有现象都由 UE 完成。
 
 ## Artifact Schema
 
@@ -163,7 +175,7 @@ harness_verifier.json
 <backend>_output/render_manifest.json
 ```
 
-真实 UE 后续还必须补 `camera_trajectory.json`、视频/frame sequence、depth/normal/audio/pass manifest。
+UE v002 已生成 `camera_trajectory.json`、双机位 RGB 视频、逐帧 depth/segmentation 与 pass manifest；后续还必须补 normal/audio、完整五机位 profile 与原生 Chaos substep/contact impulse trace。
 
 ## 旧 Pipeline 到 Harness 的映射
 

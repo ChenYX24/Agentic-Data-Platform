@@ -78,6 +78,23 @@ def actor_binding_from_node(node: dict[str, Any], *, target_backend: str) -> dic
     simulate_physics = bool(physics_critical and not kinematic and not is_field)
     proxy = bool(physics.get("proxy") or asset_binding.get("fallback_reason"))
     ue_path = asset_binding.get("selected_asset_ue_path")
+    collider = str(physics.get("collider") or node.get("shape") or "box").casefold()
+    collision_enabled = bool(physics_critical and not is_field)
+    controlled_analytic_collision = not ue_path or (simulate_physics and "sphere" in collider)
+    collision_geometry_source = (
+        "none"
+        if not collision_enabled
+        else f"analytic_{collider}"
+        if controlled_analytic_collision
+        else "selected_asset"
+    )
+    runtime_usage = (
+        "visual_proxy"
+        if ue_path and collision_geometry_source != "selected_asset"
+        else "collision_and_visual"
+        if ue_path
+        else "analytic_proxy"
+    )
     return {
         "object_id": object_id,
         "runtime_actor_id": runtime_actor_id(object_id),
@@ -91,18 +108,40 @@ def actor_binding_from_node(node: dict[str, Any], *, target_backend: str) -> dic
         "asset": {
             "selected_asset_id": asset_binding.get("selected_asset_id"),
             "ue_path": ue_path,
+            "asset_kind": asset_binding.get("asset_kind"),
             "proxy": proxy,
             "binding_source": "ue_asset" if ue_path else "analytic_proxy" if proxy else "unbound",
+            "runtime_usage": runtime_usage,
+            "source_kind": asset_binding.get("source_kind"),
+            "source_uri": asset_binding.get("source_uri"),
+            "license": asset_binding.get("license"),
+            "sha256": asset_binding.get("sha256"),
+            "preserve_authored_scale": bool(asset_binding.get("preserve_authored_scale")),
+            "authored_size_m": asset_binding.get("authored_size_m"),
+            "quality_gate": asset_binding.get("quality_gate"),
             "fallback_reason": asset_binding.get("fallback_reason"),
         },
         "physics": {
             "simulate_physics": simulate_physics,
             "kinematic": kinematic,
-            "collision_enabled": bool(physics_critical and not is_field),
+            "collision_enabled": collision_enabled,
             "mass_kg": physics.get("mass_kg"),
             "collider": physics.get("collider"),
+            "collision_geometry_source": collision_geometry_source,
+            "collision_geometry_verification": (
+                "not_applicable"
+                if not collision_enabled
+                else "runtime_controlled"
+                if controlled_analytic_collision
+                else "declared_unverified"
+            ),
             "collision_profile": "NoCollision" if is_field else physics.get("collision_profile"),
             "material": physics.get("material"),
+            "linear_damping": physics.get("linear_damping"),
+            "angular_damping": physics.get("angular_damping"),
+            "enable_gravity": physics.get("enable_gravity"),
+            "use_ccd": physics.get("use_ccd"),
+            "initial_angular_velocity_rad_s": physics.get("initial_angular_velocity_rad_s"),
         },
         "runtime_binding_requirements": asset_binding.get("runtime_binding_requirements") or [],
         "target_backend": target_backend,
@@ -143,6 +182,14 @@ def placement_warnings_for(actor_bindings: list[dict[str, Any]], scene_layout: d
 def ue_class_for(node: dict[str, Any], *, is_field: bool) -> str:
     if is_field:
         return "/Script/Engine.Actor"
+    asset_binding = node.get("asset_binding") if isinstance(node.get("asset_binding"), dict) else {}
+    asset_kind = str(asset_binding.get("asset_kind") or "").casefold()
+    asset_path = str(asset_binding.get("selected_asset_ue_path") or "")
+    if asset_kind in {"geometrycollection", "geometry_collection"}:
+        return "/Script/GeometryCollectionEngine.GeometryCollectionActor"
+    if asset_kind == "blueprint" and "." in asset_path:
+        package, object_name = asset_path.rsplit(".", 1)
+        return f"{package}.{object_name}_C"
     shape = str(node.get("shape") or "").casefold()
     if "skeletal" in shape:
         return "/Script/Engine.SkeletalMeshActor"

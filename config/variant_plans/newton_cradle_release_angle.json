@@ -1,0 +1,56 @@
+{
+  "schema_version": "harness_variant_plan_v1",
+  "case_route": "rigid_collision/newton_cradle/v001_release_angle_ofat",
+  "base_case": "cases/rigid_collision/newton_cradle/v001_release_angle_ofat/release_35deg.json",
+  "selection_strategy": "baseline_plus_one_factor_at_a_time",
+  "combination_count": 3,
+  "axes": [
+    {
+      "id": "release_angle",
+      "baseline": "35deg",
+      "levels": [
+        {
+          "id": "25deg",
+          "edits": {
+            "/expected_physics/active_release_angle_degrees": 25.0,
+            "/objects/5/initial_position_m": [-0.253571, 0.0, 0.706215]
+          }
+        },
+        {
+          "id": "35deg",
+          "edits": {
+            "/expected_physics/active_release_angle_degrees": 35.0,
+            "/objects/5/initial_position_m": [-0.344146, 0.0, 0.758509]
+          }
+        },
+        {
+          "id": "45deg",
+          "edits": {
+            "/expected_physics/active_release_angle_degrees": 45.0,
+            "/objects/5/initial_position_m": [-0.424264, 0.0, 0.825736]
+          }
+        }
+      ]
+    }
+  ],
+  "selected_variants": [
+    {
+      "id": "baseline",
+      "levels": {
+        "release_angle": "35deg"
+      }
+    },
+    {
+      "id": "release_angle-25deg",
+      "levels": {
+        "release_angle": "25deg"
+      }
+    },
+    {
+      "id": "release_angle-45deg",
+      "levels": {
+        "release_angle": "45deg"
+      }
+    }
+  ]
+}

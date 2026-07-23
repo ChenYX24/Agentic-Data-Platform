@@ -1,0 +1,28 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "negative_no_gravity_response",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "Invalid regression artifact: water remains at its initial height despite declared downward gravity.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "free_fall_splash_and_confinement"
+  },
+  "objects": [
+    {"id": "water", "role": "fluid", "initial_position_m": [0.0, 0.0, 0.65], "size_m": [0.3, 0.3, 0.3]},
+    {"id": "basin", "role": "rigid_container", "floor_z_m": 0.0, "wall_half_extent_m": 0.3}
+  ],
+  "active_objects": [],
+  "passive_objects": ["water"],
+  "required_assets": ["fluid volume", "rigid basin colliders"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase", "container_collision_bounds"],
+  "verifier_expectation": {"status": "fail", "failure_type": "gravity_direction_not_observed"},
+  "should_pass": false,
+  "negative_mode": "no_gravity_response",
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 0.75,
+    "particle_size_m": 0.025
+  },
+  "notes": "Regression fixture: a cache with unchanged center of mass must be rejected by the particle verifier."
+}

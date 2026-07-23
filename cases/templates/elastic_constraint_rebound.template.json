@@ -9,7 +9,8 @@
     "max_extension_m": {"type": "float", "min": 0.25, "max": 0.65},
     "constraint_stiffness_n_m": {"type": "float", "min": 25.0, "max": 120.0},
     "damping_ratio": {"type": "float", "min": 0.08, "max": 0.42},
-    "payload_mass_kg": {"type": "float", "min": 0.35, "max": 1.4}
+    "payload_mass_kg": {"type": "float", "min": 0.35, "max": 1.4},
+    "payload_initial_height_m": {"type": "float", "min": 0.75, "max": 1.25}
   },
   "object_count_ranges": {
     "elastic_constraint_anchor": {"min": 1, "max": 1},
@@ -19,7 +20,7 @@
   "physics_critical_assets": ["elastic constraint anchor", "elastic constrained rigid body", "elastic tether constraint"],
   "visual_only_assets": ["rope/bungee cord visual"],
   "camera_policy": {"default": "side_static", "allowed": ["side_static", "front_static", "event_closeup", "tracking_subject"]},
-  "perturbation_policy": {"positive_ratio": 0.7, "vary": ["rest_length_m", "max_extension_m", "constraint_stiffness_n_m", "damping_ratio", "payload_mass_kg"], "lock": ["seed"]},
+  "perturbation_policy": {"positive_ratio": 0.7, "vary": ["rest_length_m", "max_extension_m", "constraint_stiffness_n_m", "damping_ratio", "payload_mass_kg", "payload_initial_height_m"], "lock": ["seed"]},
   "expected_invariants": [
     "constraint_trace_exists",
     "extension_stays_below_max",

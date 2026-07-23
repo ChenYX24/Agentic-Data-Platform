@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Any
 
+from harness.core.artifact_manager import link_or_copy
 from harness.core.artifact_schema import read_json, write_json
 from harness.runtime.camera_planner import CameraPlan, camera_plan_to_dict
-from harness.verification.render_sync_checker import ARTIFACT_SCHEMA_VERSION, check_render_sync
+from harness.verification.render_sync_checker import ARTIFACT_SCHEMA_VERSION, check_render_sync, detect_image_format, has_mp4_magic, has_openexr_magic
 
 
 RENDER_PASS_SCHEMA_VERSION = "render_pass_manifest.v2.3"
@@ -42,7 +42,7 @@ def write_render_contract_artifacts(
 
     overview = run_dir / "views" / (camera_plan.views[0].camera_id if camera_plan.views else "overview") / "rgb.mp4"
     if overview.exists() and not (run_dir / "video.mp4").exists():
-        shutil.copyfile(overview, run_dir / "video.mp4")
+        link_or_copy(overview, run_dir / "video.mp4")
 
     manifest = build_render_pass_manifest(
         run_dir,
@@ -98,6 +98,7 @@ def build_render_pass_manifest(
     source: str,
     allow_placeholders: bool,
 ) -> dict[str, Any]:
+    required_passes = set(normalize_passes(render_passes))
     views: dict[str, Any] = {}
     frame_counts: set[int] = set()
     fps_values: set[int] = set()
@@ -109,24 +110,31 @@ def build_render_pass_manifest(
         meta = read_optional_json(view_dir / "meta.json")
         rgb = view_dir / "rgb.mp4"
         depth = view_dir / "depth.exr"
-        segmentation = view_dir / "segmentation.png"
+        segmentation = view_dir / "segmentation.exr"
+        legacy_segmentation = view_dir / "segmentation.png"
         frame_count_rgb = int(meta.get("frame_count_rgb") or meta.get("frame_count") or (DEFAULT_FRAME_COUNT if rgb.exists() else 0))
         frame_count_depth = int(meta.get("frame_count_depth") or 0)
+        frame_count_segmentation = int(meta.get("frame_count_segmentation") or len(meta.get("segmentation_frames") or []))
         fps = int(meta.get("fps") or DEFAULT_FPS)
         depth_source = str(meta.get("depth_source") or "missing")
-        render_pass_valid = bool(
-            rgb.exists()
-            and depth.exists()
-            and segmentation.exists()
-            and meta
+        rgb_ready = "rgb" not in required_passes or (has_mp4_magic(rgb) and frame_count_rgb > 0)
+        depth_ready = "depth" not in required_passes or (
+            has_openexr_magic(depth)
             and depth_source == "ue"
             and float(meta.get("depth_variance") or 0.0) > 0
-            and frame_count_rgb > 0
-            and frame_count_rgb == frame_count_depth
+            and frame_count_depth == frame_count_rgb
         )
+        segmentation_ready = "segmentation" not in required_passes or (
+            has_openexr_magic(segmentation)
+            and frame_count_segmentation == frame_count_rgb
+            and bool(meta.get("instance_level") or meta.get("segmentation_type") == "instance")
+        )
+        render_pass_valid = bool(meta and rgb_ready and depth_ready and segmentation_ready)
         frame_counts.add(frame_count_rgb)
         fps_values.add(fps)
-        all_depth_from_ue = all_depth_from_ue and depth_source == "ue"
+        all_depth_from_ue = all_depth_from_ue and (
+            "depth" not in required_passes or depth_source == "ue"
+        )
         all_valid = all_valid and render_pass_valid
         views[camera_id] = {
             "camera_id": camera_id,
@@ -134,10 +142,14 @@ def build_render_pass_manifest(
             "rgb_path": relative_or_empty(rgb, run_dir),
             "depth_path": relative_or_empty(depth, run_dir),
             "segmentation_path": relative_or_empty(segmentation, run_dir),
+            "segmentation_format": detect_image_format(segmentation),
+            "legacy_segmentation_path": relative_or_empty(legacy_segmentation, run_dir),
+            "segmentation_extension_mismatch": detect_image_format(legacy_segmentation) == "openexr" and not segmentation.exists(),
             "meta_path": relative_or_empty(view_dir / "meta.json", run_dir),
             "frame_count": frame_count_rgb,
             "frame_count_rgb": frame_count_rgb,
             "frame_count_depth": frame_count_depth,
+            "frame_count_segmentation": frame_count_segmentation,
             "fps": fps,
             "duration_sec": round(frame_count_rgb / fps, 4) if fps else 0.0,
             "timebase": "shared_sim_time",
@@ -163,7 +175,11 @@ def build_render_pass_manifest(
         "views": views,
         "passes": render_passes,
         "ue_render_real": backend == "ue" and render_pass_valid and all_depth_from_ue,
-        "depth_source": "ue" if all_depth_from_ue and has_views else "missing",
+        "depth_source": (
+            "not_requested"
+            if "depth" not in required_passes
+            else "ue" if all_depth_from_ue and has_views else "missing"
+        ),
         "multi_view_sync_ok": multi_view_sync_ok,
         "render_pass_valid": render_pass_valid,
         "render_observability_fail": 0 if render_pass_valid else 1,

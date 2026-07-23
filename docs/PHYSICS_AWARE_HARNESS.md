@@ -154,12 +154,13 @@ python3.13 scripts/harness_compile_actor_placement.py \
 
 ## Stage 4: Runtime Backend
 
-支持两个 backend：
+当前注册三个 backend：
 
 | Backend | 状态 | 用途 |
 |---|---|---|
 | `fallback` | 可运行 | deterministic toy trajectory，用于 verifier 和 CLI regression |
-| `ue` | fail-clear contract | 目标真实 backend，当前还未接 legacy UE runner |
+| `ue` | 已接 initial-state Chaos + native capture；缺配置时 fail-clear | v002 已验证双机位 RGB/depth/instance segmentation；输入不含预计算轨迹，仍缺完整 120 Hz substep trace 与原生 impulse |
+| `genesis_sph` | 隔离环境原型 | 流体粒子 truth cache + SplashSurf 表面序列已接统一 artifact/verifier/readiness 和 CaseSpec 参数；仍缺与 UE 五视角传感器的同等级闭环 |
 
 运行单 case：
 
@@ -172,6 +173,17 @@ python3.13 scripts/harness_run_case.py cases/billiards/low_speed_single_contact.
 ```bash
 python3.13 scripts/harness_run_case_batch.py cases/generated/billiards_seed42 --backend fallback
 ```
+
+真实 UE 批量必须先使用 execution profile 做成本漏斗：
+
+```bash
+python3.13 scripts/harness_run_case.py cases/domino/six_domino_chain.json --backend ue --profile smoke
+# 只有 smoke 的物理、RGB observability 与事件门通过后：
+python3.13 scripts/harness_run_case.py cases/domino/six_domino_chain.json --backend ue --profile candidate
+# publish 仅在用户 keep candidate 后运行。
+```
+
+`smoke/candidate/publish` 分别为 `320×180×1 view×RGB`、`640×360×5 views×3 modalities`、`1280×720×5 views×3 modalities`。每个 run 必须写 `execution_profile.json` 和 `efficiency_report.json`；smoke 不能进入 review delivery。外部 solver/cached replay 的 UE 阶段必须报告 `solver_pass_count=0`，不得为每个机位重复求解。
 
 ## Stage 5: Artifact Collection
 
@@ -191,15 +203,14 @@ harness_verifier.json
   render_pass_manifest.json
 ```
 
-真实 UE 后续还需要补：
+v002 已落地双机位 RGB、逐帧 metric depth、逐帧 instance segmentation、camera trajectory 与 pass manifest。真实 UE 后续还需要补：
 
-- multi-view RGB
-- depth / normal
+- 从当前双机位扩至声明的完整五机位
+- normal
 - audio / contact audio
-- camera trajectory
 - engine states
 - blueprint/runtime parameters
-- Chaos/contact trace
+- 完整 Chaos substep state/contact impulse trace
 
 ## Stage 5: Physics Verifier
 
@@ -217,7 +228,7 @@ Verifier 不检查“画面是否动了”，而检查 capability invariants：
 | `constraint_momentum_transfer` | constrained chain bodies must start still, adjacent contacts must be ordered, and terminal receiver response must follow final contact |
 | `elastic_energy_launch` | launched body must start still, release event must exist, and post-release speed/energy must match the stored elastic-energy envelope |
 | `elastic_constraint_rebound` | elastic tether must export constraint trace, stay within max extension, and rebound toward the anchor after peak stretch |
-| `brittle_impact_fracture` | fracture events must occur after causal contact, impact energy must exceed threshold, and fragments must be exported |
+| `brittle_impact_fracture` | fracture events must occur after causal native contact, impact energy must exceed threshold, fragments must be exported；声明撞点中心时，fracture center 必须与 native `impact_point_cm` 在容差内一致。预切径向拓扑不冒充运行时任意撞点重拓扑 |
 | `asset_runtime_binding_invocation` | physics-critical assets must bind colliders, mass/material metadata, collision profile, and runtime actor ids |
 
 验证命令：

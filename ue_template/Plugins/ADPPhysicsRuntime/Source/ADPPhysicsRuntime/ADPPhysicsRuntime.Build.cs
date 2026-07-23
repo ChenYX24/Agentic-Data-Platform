@@ -11,9 +11,21 @@ public class ADPPhysicsRuntime : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"GeometryCollectionEngine",
 			"Json",
 			"JsonUtilities",
 			"PhysicsCore"
 		});
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new[]
+			{
+				"AssetRegistry",
+				"Chaos",
+				"DataflowCore",
+				"FractureEngine"
+			});
+		}
 	}
 }

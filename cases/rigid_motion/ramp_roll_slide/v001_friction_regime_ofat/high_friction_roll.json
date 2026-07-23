@@ -1,0 +1,27 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "ramp_ball_high_friction_roll_v001",
+  "capability_id": "ramp_sliding_friction",
+  "prompt": "A marked billiard ball starts from rest on an industrial ramp, rolls without meaningful slip under high contact friction, enters a high-friction runout, and settles before the video ends.",
+  "scene": {"map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day", "lighting_preset": "map_lights_balanced_fill", "duration_s": 4.8, "post_event_tail_s": 1.2, "scene_bounds": {"center": [1.45, 0.0, 0.6], "extent": [5.9, 1.8, 1.6]}, "camera_overrides": {"event_closeup": {"location": [-1.8, -3.2, 2.3], "target": [0.8, 0.0, 0.55], "fov": 46.0}}},
+  "timebase": {"physics_hz": 480, "render_fps": 24},
+  "physical_parameters": {"gravity_m_s2": [0.0, 0.0, -9.81]},
+  "expected_physics": {
+    "coordinate_system": "z_up", "subject_object_id": "ramp_subject", "contact_surface": "ramp", "downhill_axis": "+x", "slope_angle_deg": 18.0,
+    "friction_dynamic": 0.55, "rolling_friction": 0.05, "torsional_friction": 0.005, "runout_friction_dynamic": 2.0, "linear_damping": 0.2, "angular_damping": 0.05,
+    "expected_motion_mode": "rolling", "expected_min_slip_ratio": 0.0, "expected_max_slip_ratio": 0.05,
+    "expected_min_downhill_displacement_m": 3.5, "expected_max_downhill_displacement_m": 3.95, "expected_final_speed_max_m_s": 0.02,
+    "required_trajectory_source": "mujoco_ramp_friction"
+  },
+  "objects": [
+    {"id": "ramp_subject", "role": "rolling_subject", "shape": "sphere", "collider": "sphere", "radius_m": 0.2, "mass_kg": 0.8, "initial_position_m": [-1.05, 0.0, 1.147163], "initial_velocity_m_s": [0.0, 0.0, 0.0], "asset_query": "SM_8Ball", "fit_dynamic_plan": false, "visual_material_path": "/Game/AgenticGenerated/Materials/M_Agentic_Runtime_AirSphere.M_Agentic_Runtime_AirSphere", "enable_gravity": true, "material": {"name": "ramp_test_ball", "static_friction": 0.55, "dynamic_friction": 0.55, "restitution": 0.02}},
+    {"id": "ramp", "role": "ramp", "shape": "inclined_plane", "collider": "box", "size_m": [3.0, 1.2, 0.14], "initial_position_m": [0.0, 0.0, 0.52], "initial_rotation_deg": [18.0, 0.0, 0.0], "kinematic": true, "force_analytic_proxy": true, "fit_dynamic_plan": false, "generate_solid_material": true, "generated_material_name": "M_Harness_Ramp_WarmWood", "color_rgb": [0.52, 0.25, 0.08], "roughness": 0.58, "metallic": 0.0, "fixed_material_color": true, "material": {"name": "ramp_surface", "static_friction": 0.55, "dynamic_friction": 0.55, "restitution": 0.02}},
+    {"id": "runout", "role": "support_surface", "shape": "box", "collider": "box", "size_m": [2.8, 1.5, 0.12], "initial_position_m": [2.9, 0.0, 0.04], "kinematic": true, "force_analytic_proxy": true, "fit_dynamic_plan": false, "generate_solid_material": true, "generated_material_name": "M_Harness_Runout_Concrete", "color_rgb": [0.42, 0.46, 0.50], "roughness": 0.82, "metallic": 0.0, "fixed_material_color": true, "material": {"name": "high_friction_runout", "static_friction": 2.0, "dynamic_friction": 2.0, "restitution": 0.01}},
+    {"id": "end_wall", "role": "support_frame", "shape": "box", "collider": "box", "size_m": [0.16, 1.5, 0.9], "initial_position_m": [4.38, 0.0, 0.49], "kinematic": true, "force_analytic_proxy": true, "fit_dynamic_plan": false, "generate_solid_material": true, "generated_material_name": "M_Harness_Ramp_Stopper", "color_rgb": [0.72, 0.26, 0.06], "roughness": 0.48, "metallic": 0.0, "fixed_material_color": true, "material": {"name": "catch_wall", "static_friction": 0.8, "dynamic_friction": 0.8, "restitution": 0.01}}
+  ],
+  "active_objects": [], "passive_objects": ["ramp_subject"],
+  "required_assets": ["SM_8Ball visual mesh", "harness blue visual material", "analytic ramp collider", "runout and catch wall", "Market Day map"],
+  "required_signals": ["trajectory", "contact_events", "angular_velocity", "material_friction_label", "solver_provenance"],
+  "verifier_expectation": {"status": "pass"}, "should_pass": true,
+  "notes": "Only the ramp contact friction changes across this OFAT family; all post-initial motion comes from MuJoCo."
+}

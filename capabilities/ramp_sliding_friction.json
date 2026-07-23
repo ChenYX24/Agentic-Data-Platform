@@ -1,54 +1,71 @@
 {
   "schema_version": "harness_capability_v1",
   "id": "ramp_sliding_friction",
-  "description": "Compile inclined-plane prompts into deterministic ramp rolling/sliding cases with friction-sensitive downhill motion evidence.",
+  "description": "Generate inclined-plane roll/slide OFAT matrices from initial state and friction parameters, solve them with MuJoCo, and replay one solver timeline through UE multi-view RGB/depth/instance segmentation.",
   "physical_assumptions": [
-    "The harness coordinate system is z-up.",
-    "The ramp downhill axis is +x unless a case explicitly overrides it.",
-    "A passive subject starts at rest and should only accelerate downhill under gravity and ramp contact.",
-    "Higher dynamic friction should reduce travel distance under the same slope angle and duration."
+    "The harness coordinate system is z-up and the default ramp downhill axis is +x.",
+    "The subject starts at rest and subsequent translation and rotation come from the solver, never from authored per-frame trajectories.",
+    "Under one locked slope, mass, map, asset, camera plan and timebase, increasing friction should reduce slip ratio and downhill displacement.",
+    "The runout may use a separate high friction value so every condition settles before the post-event tail ends."
   ],
   "required_signals": [
-    "trajectory",
-    "contact_events",
-    "ramp_angle_label",
-    "material_friction_label"
+    "world-space translation and quaternion trajectory",
+    "linear and angular velocity",
+    "ramp/runout contact events",
+    "solver provenance",
+    "dynamic friction",
+    "median slip ratio",
+    "downhill displacement",
+    "final speed"
   ],
   "required_assets": [
-    "rigid body subject",
-    "ramp collider",
-    "physics material with friction"
+    "physics-critical analytic sphere collider",
+    "inclined analytic box collider",
+    "runout and catch wall",
+    "real visual mesh or declared analytic visual fallback",
+    "UE map and stable visual materials"
   ],
   "verifier_rules": [
-    "Subject trajectory must move downhill along +x.",
-    "Subject z should decrease while traveling along the ramp.",
-    "Subject must have ramp contact evidence.",
-    "Travel distance must fall inside the friction-aware expected range."
+    "Trajectory source must be mujoco_ramp_friction and every frame must retain solver provenance.",
+    "The subject must contact the ramp, move downhill and lose height without unexplained pre-motion.",
+    "Low, medium and high friction conditions must respectively satisfy declared sliding, partial-roll and rolling slip-ratio bands.",
+    "Downhill displacement and final speed must fall inside each CaseSpec range.",
+    "All five cameras must share one 145-frame timeline with canonical RGB, metric depth EXR and stable instance segmentation EXR.",
+    "A visual material override on a multi-slot UE asset must cover every material slot; the analytic collider remains hidden from RGB."
   ],
   "failure_taxonomy": [
     "F1_missing_trajectory",
     "F2_missing_contact_events",
     "F4_causality_violation",
-    "F7_runtime_artifact_incomplete"
+    "F7_runtime_artifact_incomplete",
+    "F_RAMP_SOURCE_INVALID",
+    "F_RAMP_SLIP_REGIME_INVALID",
+    "F_RAMP_DISTANCE_INVALID",
+    "F_RAMP_NOT_SETTLED",
+    "F_VISUAL_PROXY_NOT_OBSERVABLE"
   ],
   "repair_suggestions": [
-    "Ensure the ramp collider is physics-critical and participates in contact events.",
-    "Check the downhill axis and coordinate system labels.",
-    "Bind dynamic friction to the subject/ramp physics material.",
-    "Do not keyframe uphill motion without an explicit force."
+    "Fix the inclined support relation using the surface normal instead of horizontal top-face snapping.",
+    "Keep collision geometry analytic and bind the real mesh only as a no-collision visual proxy.",
+    "When an asset appears in segmentation but not RGB, validate all material slots before changing physics or camera state.",
+    "Use the smoke to candidate cost funnel and stop before full sensor export if RGB observability fails.",
+    "Do not rank different friction conditions as quality winners; report them as a causal matrix."
   ],
   "smoke_cases": [
-    "cases/ramp/ramp_roll_low_friction.json",
-    "cases/ramp/ramp_slide_high_friction_short_travel.json"
+    "cases/rigid_motion/ramp_roll_slide/v001_friction_regime_ofat/medium_friction_partial_roll.json"
   ],
   "regression_cases": [
-    "cases/ramp/negative_uphill_without_force.json",
-    "cases/ramp/negative_no_friction_sensitivity.json"
+    "cases/rigid_motion/ramp_roll_slide/v001_friction_regime_ofat/low_friction_slide.json",
+    "cases/rigid_motion/ramp_roll_slide/v001_friction_regime_ofat/high_friction_roll.json"
   ],
   "capability_type": "physics_constraint",
   "stage_ids": [
+    "prompt_to_case",
+    "asset_resolution",
+    "static_scene_build",
     "physics_control",
     "runtime_artifact_collection",
-    "physics_verification"
+    "physics_verification",
+    "complete_case_delivery"
   ]
 }

@@ -6,6 +6,15 @@ from typing import Any
 
 SPEED_EPS = 0.05
 DISPLACEMENT_EPS = 0.01
+COMPLETE_PASSIVE_PROPAGATION_SPREADS = frozenset({"full_rack_break", "angled_rack_break"})
+
+
+def requires_complete_passive_propagation(case_spec: dict[str, Any]) -> bool:
+    expected = case_spec.get("expected_physics") or {}
+    explicit = expected.get("require_all_passive_contact_and_motion")
+    if explicit is not None:
+        return bool(explicit)
+    return str(expected.get("expected_spread") or "") in COMPLETE_PASSIVE_PROPAGATION_SPREADS
 
 
 def verify_contact_causality(case_spec: dict[str, Any], trajectory: list[dict[str, Any]]) -> tuple[str | None, dict[str, Any] | None, list[dict[str, Any]]]:
@@ -26,6 +35,19 @@ def verify_contact_causality(case_spec: dict[str, Any], trajectory: list[dict[st
     if not active or not passive:
         return "F7_runtime_artifact_incomplete", failure("case_spec", 0, 0, "active_passive_sets", 0), evidence
     first_frame = trajectory[0]
+    active_motion = max(
+        (
+            distance(
+                position(frame_objects(frame).get(object_id) or {}),
+                position(frame_objects(first_frame).get(object_id) or {}),
+            )
+            for object_id in active
+            for frame in trajectory[1:]
+        ),
+        default=0.0,
+    )
+    if active_motion <= DISPLACEMENT_EPS:
+        return "F4_causality_violation", failure("active_objects", 0, 0, "active_displacement_m", round(active_motion, 6)), evidence
     for object_id in sorted(passive):
         state = frame_objects(first_frame).get(object_id) or {}
         speed = norm(state.get("velocity_m_s"))
@@ -34,10 +56,13 @@ def verify_contact_causality(case_spec: dict[str, Any], trajectory: list[dict[st
     contact_frame_by_passive = first_activation_contacts(trajectory, active, passive)
     if not contact_frame_by_passive:
         return "F4_causality_violation", failure("passive_targets", 0, 0, "active_contact_count", 0), evidence
+    complete_passive_propagation = requires_complete_passive_propagation(case_spec)
     first_positions = {oid: position(frame_objects(first_frame).get(oid) or {}) for oid in passive}
     for object_id in sorted(passive):
         contact_index = contact_frame_by_passive.get(object_id)
         nearest_contact_frame = first_frame_id(trajectory[contact_index]) if contact_index is not None else None
+        if complete_passive_propagation and contact_index is None:
+            return "F4_causality_violation", failure(object_id, 0, 0, "full_rack_passive_contact_missing", 0), evidence
         frames_to_check = trajectory[:contact_index] if contact_index is not None else trajectory
         for idx, frame in enumerate(frames_to_check):
             state = frame_objects(frame).get(object_id) or {}
@@ -58,7 +83,16 @@ def verify_contact_causality(case_spec: dict[str, Any], trajectory: list[dict[st
                     detail["nearest_contact_frame"] = None
                     detail["displacement_m"] = round(displacement, 6)
                     return "F4_causality_violation", detail, evidence
-        evidence.append({"object_id": object_id, "first_contact_frame": nearest_contact_frame})
+        max_displacement = max(
+            (
+                distance(position(frame_objects(frame).get(object_id) or {}), first_positions.get(object_id, [0, 0, 0]))
+                for frame in trajectory
+            ),
+            default=0.0,
+        )
+        if complete_passive_propagation and max_displacement + 1e-9 < DISPLACEMENT_EPS:
+            return "F4_causality_violation", failure(object_id, 0, 0, "full_rack_passive_displacement_m", round(max_displacement, 6)), evidence
+        evidence.append({"object_id": object_id, "first_contact_frame": nearest_contact_frame, "max_displacement_m": round(max_displacement, 6)})
     return None, None, evidence
 
 

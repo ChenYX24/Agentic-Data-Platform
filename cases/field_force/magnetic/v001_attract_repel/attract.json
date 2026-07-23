@@ -1,0 +1,85 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "magnetic_attract_v001",
+  "capability_id": "magnetic_force_field",
+  "prompt": "A steel sphere on a laboratory platform is pulled toward a fixed red magnet by a declared magnetic field, then settles after contact.",
+  "scene": {
+    "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day",
+    "duration_s": 4.0,
+    "post_event_tail_s": 1.0,
+    "scene_bounds": {
+      "center": [0.3, 0.0, 0.2],
+      "extent": [1.4, 0.8, 0.7]
+    }
+  },
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "magnetic_mode": "attract",
+    "source_object_id": "magnet_source",
+    "magnetic_subject_id": "steel_ball",
+    "magnetic_strength": 0.08,
+    "magnetic_force_model": "finite_range_softened_inverse_square",
+    "field_softening_m": 0.12,
+    "field_range_m": 1.15,
+    "maximum_force_n": 0.8,
+    "magnetic_damping_n_s_m": 0.35,
+    "expected_min_radial_displacement_m": 0.35,
+    "expected_max_radial_displacement_m": 0.55,
+    "maximum_final_speed_m_s": 0.05,
+    "required_trajectory_source": "mujoco_magnetic_force"
+  },
+  "objects": [
+    {
+      "id": "magnet_source",
+      "role": "magnetic_source",
+      "shape": "sphere",
+      "radius_m": 0.09,
+      "asset_query": "red whiteboard magnet",
+      "generate_solid_material": true,
+      "generated_material_name": "M_Harness_MagneticSource_Red",
+      "color_rgb": [0.82, 0.02, 0.01],
+      "roughness": 0.28,
+      "metallic": 0.65,
+      "fixed_material_color": true,
+      "initial_position_m": [0.0, 0.0, 0.08],
+      "kinematic": true
+    },
+    {
+      "id": "steel_ball",
+      "role": "magnetized_body",
+      "shape": "sphere",
+      "radius_m": 0.08,
+      "mass_kg": 0.2,
+      "asset_query": "large metallic sphere",
+      "force_analytic_proxy": true,
+      "collider": "sphere",
+      "collision_profile": "PhysicsActor",
+      "visual_material_path": "/Game/DD_Vehicles_Advanced/Materials/Material_Instances/Metal/MI_Metal_Anodized_01_Bright.MI_Metal_Anodized_01_Bright",
+      "material": {
+        "name": "anodized steel",
+        "static_friction": 0.45,
+        "dynamic_friction": 0.32,
+        "restitution": 0.22
+      },
+      "initial_position_m": [0.6, 0.0, 0.08],
+      "initial_velocity_m_s": [0.0, 0.0, 0.0],
+      "enable_gravity": false
+    },
+    {
+      "id": "platform",
+      "role": "support_surface",
+      "shape": "box",
+      "size_m": [2.6, 1.4, 0.1],
+      "initial_position_m": [0.35, 0.0, 0.0],
+      "force_analytic_proxy": true,
+      "kinematic": true
+    }
+  ],
+  "active_objects": [],
+  "passive_objects": ["steel_ball"],
+  "required_assets": ["red whiteboard magnet with harness-generated solid material", "UE Basic Sphere with anodized metal material", "laboratory platform"],
+  "required_signals": ["trajectory", "magnetic_field_label", "force_field_label", "source_relative_distance", "force_trace"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "notes": "Initial state only; every later steel-ball state is integrated by the MuJoCo magnetic-force adapter."
+}

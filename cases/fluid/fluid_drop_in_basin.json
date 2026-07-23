@@ -1,0 +1,28 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "fluid_drop_in_basin",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A cubic volume of water falls into a rigid square basin, splashes, and begins to settle.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "free_fall_splash_and_confinement"
+  },
+  "objects": [
+    {"id": "water", "role": "fluid", "initial_position_m": [0.0, 0.0, 0.65], "size_m": [0.3, 0.3, 0.3]},
+    {"id": "basin", "role": "rigid_container", "floor_z_m": 0.0, "wall_half_extent_m": 0.3}
+  ],
+  "active_objects": [],
+  "passive_objects": ["water"],
+  "required_assets": ["fluid volume", "rigid basin colliders"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 0.75,
+    "particle_size_m": 0.025,
+    "liquid_size_m": 0.3
+  },
+  "notes": "Genesis SPH runs in .venv-genesis; SplashSurf reconstructs one OBJ surface per output frame."
+}

@@ -9,6 +9,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from harness.core.workspace import workspace_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,8 +29,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     stamp = time.strftime("%Y%m%dT%H%M%S")
-    case_dir = ROOT / "cases" / "generated" / f"{args.suite}_m2_3_seed{args.seed}_{stamp}"
-    run_root = ROOT / args.out_root
+    case_dir = workspace_path(None, default_relative=Path("tmp") / "generated_cases" / f"{args.suite}_m2_3_seed{args.seed}_{stamp}")
+    run_root = workspace_path(args.out_root, default_relative="runs/world_model_experiments")
     generate_cmd = [
         sys.executable,
         str(ROOT / "scripts" / "harness_generate_cases.py"),

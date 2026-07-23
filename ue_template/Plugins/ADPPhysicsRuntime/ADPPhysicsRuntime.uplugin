@@ -7,6 +7,12 @@
 	"Category": "Simulation",
 	"CanContainContent": false,
 	"IsBetaVersion": true,
+	"Plugins": [
+		{
+			"Name": "Fracture",
+			"Enabled": true
+		}
+	],
 	"Modules": [
 		{
 			"Name": "ADPPhysicsRuntime",

@@ -23,7 +23,7 @@ def validate_world_model_run(run_dir: str | Path, *, write: bool = True) -> dict
     require_file(run_dir / "inputs" / "render_config.json", "F_INPUT_MISSING", failures)
     require_file(run_dir / "passes" / "rgb" / "video.mp4", "F_RGB_MISSING", failures)
     require_file(run_dir / "passes" / "data" / "depth.exr", "F_DEPTH_MISSING", failures)
-    require_file(run_dir / "passes" / "data" / "mask.png", "F_MASK_MISSING", failures)
+    require_file(run_dir / "passes" / "data" / "segmentation.exr", "F_MASK_MISSING", failures)
     require_file(run_dir / "passes" / "data" / "instance.json", "F_MASK_MISSING", failures)
     require_file(run_dir / "sync" / "camera_trajectory.json", "F_SYNC_MISSING", failures)
     require_file(run_dir / "sync" / "physics_trace.json", "F_SYNC_MISSING", failures)

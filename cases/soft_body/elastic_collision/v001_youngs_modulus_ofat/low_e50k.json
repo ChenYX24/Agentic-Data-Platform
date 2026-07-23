@@ -1,0 +1,112 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "capability_id": "soft_body_deformation",
+  "prompt": "A deformable rubber sphere is released from rest above a rigid floor, compresses on impact, rebounds under its own FEM dynamics, and settles without being driven by scripted trajectories.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "phenomenon": "volumetric_elastic_sphere_floor_impact",
+    "minimum_mean_downward_displacement_m": 0.35,
+    "minimum_compression_ratio": 0.08,
+    "maximum_compression_ratio": 0.65,
+    "maximum_relative_volume_error": 0.25,
+    "maximum_structural_edge_stretch_ratio": 1.5,
+    "minimum_floor_contact_frames": 1,
+    "minimum_rebound_center_height_m": 0.22,
+    "minimum_final_vertical_span_m": 0.24,
+    "maximum_final_mean_speed_m_s": 0.08,
+    "penetration_tolerance_m": 0.008
+  },
+  "objects": [
+    {
+      "id": "soft_ball",
+      "role": "deformable_solid",
+      "shape": "sphere",
+      "radius_m": 0.18,
+      "initial_center_m": [
+        0,
+        0,
+        0.7
+      ],
+      "initial_velocity_m_s": [
+        0,
+        0,
+        0
+      ],
+      "material": {
+        "youngs_modulus_pa": 50000,
+        "poisson_ratio": 0.43,
+        "density_kg_m3": 900,
+        "friction": 0.25,
+        "hydroelastic_modulus_pa": 2000000,
+        "constitutive_model": "linear_corotated"
+      }
+    },
+    {
+      "id": "floor",
+      "role": "support_surface",
+      "shape": "plane",
+      "z_m": 0,
+      "friction": 0.25,
+      "restitution": 0
+    }
+  ],
+  "active_objects": [
+    "soft_ball"
+  ],
+  "passive_objects": [
+    "floor"
+  ],
+  "required_assets": [
+    "solver-generated deformable sphere surface",
+    "rigid floor",
+    "UE environment map"
+  ],
+  "required_signals": [
+    "vertex_positions",
+    "vertex_velocities",
+    "tetrahedral_topology",
+    "surface_triangle_topology",
+    "solver_timebase",
+    "floor_contact",
+    "rgb",
+    "metric_depth",
+    "instance_segmentation"
+  ],
+  "verifier_expectation": {
+    "status": "pass"
+  },
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 4.0,
+    "solver_hz": 240,
+    "newton_iterations": 3,
+    "pcg_iterations": 120,
+    "sap_iterations": 8,
+    "sap_pcg_iterations": 120,
+    "damping_alpha": 0.03,
+    "damping_beta": 0.0002
+  },
+  "camera_overrides": {
+    "event_closeup": {
+      "location": [
+        -1.7,
+        -2,
+        0.7
+      ],
+      "target": [
+        0,
+        0,
+        0.28
+      ],
+      "fov": 46
+    }
+  },
+  "case_id": "soft_ball_floor_impact_v001_low_e50k",
+  "sweep_metadata": {
+    "parameter": "youngs_modulus_pa",
+    "value": 50000,
+    "comparison": "ofat"
+  },
+  "notes": "Low-stiffness endpoint. Only Young's modulus differs inside the three-condition OFAT matrix."
+}

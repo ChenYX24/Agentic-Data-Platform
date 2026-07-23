@@ -51,6 +51,8 @@ class HarnessCapabilitySchemaTests(unittest.TestCase):
         self.assertEqual(elastic_constraint.capability_type, "physics_constraint")
         fracture = next(item for item in capabilities if item.id == "brittle_impact_fracture")
         self.assertEqual(fracture.capability_type, "physics_constraint")
+        self.assertIn("cases/fracture/glass_impact_position_matrix/left_x_m0p45.json", fracture.smoke_cases)
+        self.assertIn("cases/fracture/glass_impact_position_matrix/right_x_p0p45.json", fracture.smoke_cases)
         magnetic = next(item for item in capabilities if item.id == "magnetic_force_field")
         self.assertEqual(magnetic.capability_type, "physics_constraint")
 

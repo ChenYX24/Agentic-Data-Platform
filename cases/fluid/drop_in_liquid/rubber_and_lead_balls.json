@@ -1,0 +1,59 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "rubber_and_lead_balls_in_water",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A hollow rubber ball and a solid lead ball fall into a prefilled water basin, produce visible splashes, then separate as the rubber ball floats and the lead ball sinks.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "density_driven_buoyancy_and_splash",
+    "minimum_splash_rise_m": 0.04,
+    "minimum_float_sink_separation_m": 0.04
+  },
+  "objects": [
+    {
+      "id": "water",
+      "role": "fluid",
+      "initial_position_m": [0.0, 0.0, 0.33],
+      "initial_condition": {
+        "type": "container_fill",
+        "shape": "box",
+        "size_m": [0.68, 0.54, 0.60]
+      }
+    },
+    {"id": "basin", "role": "rigid_container", "floor_z_m": 0.0, "wall_half_extent_m": 0.38},
+    {
+      "id": "rubber_ball",
+      "role": "buoyant_body",
+      "shape": "sphere",
+      "radius_m": 0.085,
+      "initial_position_m": [-0.16, 0.0, 1.15],
+      "effective_bulk_density_kg_m3": 250.0,
+      "expected_response": "float",
+      "visual_color_rgba": [0.95, 0.35, 0.08, 1.0]
+    },
+    {
+      "id": "lead_ball",
+      "role": "dense_body",
+      "shape": "sphere",
+      "radius_m": 0.09,
+      "initial_position_m": [0.16, 0.0, 1.15],
+      "density_kg_m3": 11340.0,
+      "expected_response": "sink",
+      "visual_color_rgba": [0.22, 0.24, 0.28, 1.0]
+    }
+  ],
+  "active_objects": ["rubber_ball", "lead_ball"],
+  "passive_objects": ["water", "basin"],
+  "required_assets": ["prefilled water basin", "hollow rubber ball", "solid lead ball"],
+  "required_signals": ["particle_positions", "particle_velocities", "rigid_body_states", "surface_mesh_sequence", "solver_timebase", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 2.5,
+    "particle_size_m": 0.03,
+    "pre_roll_s": 1.25
+  },
+  "notes": "The rubber ball uses effective bulk density because trapped air, not solid rubber density, determines buoyancy. The water column is physically deeper than v001, and the event includes a post-impact tail. All post-release fluid and rigid-body states must come from Genesis rigid-SPH coupling."
+}

@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.core.case_spec import load_case_spec
+from harness.core.workspace import workspace_path
 from harness.runtime.fallback_backend import FallbackBackend
 from harness.verification.physics_verifier import PhysicsVerifier
 
@@ -57,7 +58,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     timestamp = args.timestamp or time.strftime("%Y%m%dT%H%M%S")
-    output_root = ROOT / args.output_root / timestamp
+    output_root = workspace_path(args.output_root, default_relative="runs/harness_smoke") / timestamp
     backend = FallbackBackend()
     verifier = PhysicsVerifier()
     cases = []

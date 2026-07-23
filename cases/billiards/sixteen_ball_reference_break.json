@@ -1,0 +1,79 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "sixteen_ball_reference_break",
+  "capability_id": "rigid_body_contact_causality",
+  "prompt": "A polished cue ball breaks a tightly racked fifteen-ball triangle on a green felt billiards table. Preserve passive-ball causality and render clear static, top-down, tracking, and event views.",
+  "task_type": "billiards_collision",
+  "scene": {
+    "layout": "regulation_style_table_triangle_rack",
+    "duration_s": 5.0,
+    "coordinate_system": "z_up",
+    "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day",
+    "lighting_preset": "map_lights_balanced_fill"
+  },
+  "timebase": {
+    "physics_hz": 120,
+    "render_fps": 24,
+    "sample_phase": "initial_then_post_step"
+  },
+  "initial_state": {
+    "active_striker": "cue_ball",
+    "passive_targets_stationary_until_contact": true
+  },
+  "physical_parameters": {
+    "ball_radius_m": 0.09,
+    "ball_mass_kg": 0.17,
+    "restitution": 0.88,
+    "table_dynamic_friction": 0.035,
+    "ball_linear_damping": 0.01,
+    "ball_angular_damping": 0.02,
+    "cue_speed_m_s": 2.8
+  },
+  "expected_physics": {
+    "duration_s": 5.0,
+    "speed": "reference_medium",
+    "collision_graph": [["cue_ball", "target_ball_01"]],
+    "passive_stationary_until_contact": true,
+    "expected_spread": "full_rack_break",
+    "simulation_contract": {
+      "input_mode": "initial_state_only",
+      "state_solver": "ue_chaos",
+      "trajectory_role": "solver_output_render_cache"
+    },
+    "camera": {"static": ["front_static", "side_static", "top_down"], "dynamic": ["tracking_subject", "event_closeup"]}
+  },
+  "objects": [
+    {"id": "cue_ball", "role": "active_striker", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [-1.25, 0.0, 0.09], "initial_velocity_m_s": [2.8, 0.0, 0.0]},
+    {"id": "target_ball_01", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.15, 0.0, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_02", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.306, -0.09, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_03", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.306, 0.09, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_04", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.462, -0.18, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_05", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.462, 0.0, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_06", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.462, 0.18, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_07", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.618, -0.27, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_08", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.618, -0.09, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_09", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.618, 0.09, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_10", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.618, 0.27, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_11", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.774, -0.36, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_12", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.774, -0.18, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_13", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.774, 0.0, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_14", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.774, 0.18, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "target_ball_15", "role": "passive_target", "shape": "sphere", "radius_m": 0.09, "collider": "sphere", "collision_profile": "PhysicsActor", "mass_kg": 0.17, "material": {"static_friction": 0.05, "dynamic_friction": 0.035, "restitution": 0.88}, "asset_query": "/Game/Props/Decorative/SM_8Ball.SM_8Ball", "initial_position_m": [0.774, 0.36, 0.09], "initial_velocity_m_s": [0.0, 0.0, 0.0]},
+    {"id": "table", "role": "support", "shape": "box", "size_m": [3.5, 1.8, 0.1], "collider": "box", "collision_profile": "BlockAll", "material": {"static_friction": 0.06, "dynamic_friction": 0.035, "restitution": 0.12}, "asset_query": "analytic low friction support", "asset_policy": "analytic_proxy", "initial_position_m": [0.0, 0.0, 0.0]},
+    {"id": "rail_left", "role": "support", "shape": "box", "size_m": [3.5, 0.12, 0.18], "collider": "box", "collision_profile": "BlockAll", "material": {"static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.75}, "asset_query": "analytic billiard rail", "asset_policy": "analytic_proxy", "fit_dynamic_plan": false, "initial_position_m": [0.0, -0.84, 0.18]},
+    {"id": "rail_right", "role": "support", "shape": "box", "size_m": [3.5, 0.12, 0.18], "collider": "box", "collision_profile": "BlockAll", "material": {"static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.75}, "asset_query": "analytic billiard rail", "asset_policy": "analytic_proxy", "fit_dynamic_plan": false, "initial_position_m": [0.0, 0.84, 0.18]},
+    {"id": "rail_head", "role": "support", "shape": "box", "size_m": [0.12, 1.56, 0.18], "collider": "box", "collision_profile": "BlockAll", "material": {"static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.75}, "asset_query": "analytic billiard rail", "asset_policy": "analytic_proxy", "fit_dynamic_plan": false, "initial_position_m": [-1.69, 0.0, 0.18]},
+    {"id": "rail_foot", "role": "support", "shape": "box", "size_m": [0.12, 1.56, 0.18], "collider": "box", "collision_profile": "BlockAll", "material": {"static_friction": 0.2, "dynamic_friction": 0.12, "restitution": 0.75}, "asset_query": "analytic billiard rail", "asset_policy": "analytic_proxy", "fit_dynamic_plan": false, "initial_position_m": [1.69, 0.0, 0.18]}
+  ],
+  "active_objects": ["cue_ball"],
+  "passive_objects": ["target_ball_01", "target_ball_02", "target_ball_03", "target_ball_04", "target_ball_05", "target_ball_06", "target_ball_07", "target_ball_08", "target_ball_09", "target_ball_10", "target_ball_11", "target_ball_12", "target_ball_13", "target_ball_14", "target_ball_15"],
+  "required_assets": ["SM_8Ball mesh and material bundle", "green felt table", "rail colliders", "MarketEnvironment Day map"],
+  "required_signals": ["trajectory", "contact_events", "camera_trajectory", "rgb", "depth", "segmentation"],
+  "asset_requirements": {"physics_critical": ["sphere colliders", "table and rail colliders"], "visual_only": ["ball materials", "felt material", "map lighting"]},
+  "allowed_proxy_policy": "local_preview_assets_plus_analytic_structural_colliders",
+  "verification_rules": ["passive_initial_velocity_zero", "no_precontact_passive_motion", "expected_contact_required", "static_and_dynamic_camera_motion_truth"],
+  "verifier_expectation": {"status": "pass"},
+  "negative_or_boundary": false,
+  "should_pass": true,
+  "notes": "Modern replacement for the historical 16-ball matrix visual baseline. The ADP asset remains local-preview only until its distribution license and content hash policy are confirmed."
+}

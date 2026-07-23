@@ -1,0 +1,31 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "fluid_drop_height_z_0p55",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A 0.3 m cubic water volume is released from z=0.55 m into a rigid square basin; this is the low drop-height condition.",
+  "experiment": {
+    "matrix_id": "fluid_drop_height_matrix_v001",
+    "condition_id": "drop_z_0p55",
+    "factor": "water.initial_position_m.z",
+    "value_m": 0.55,
+    "comparison_role": "low"
+  },
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "free_fall_splash_and_confinement",
+    "causal_expectation": "Within this matrix, a lower release height should produce an earlier basin-floor interaction and lower pre-impact speed."
+  },
+  "objects": [
+    {"id": "water", "role": "fluid", "initial_position_m": [0.0, 0.0, 0.55], "size_m": [0.3, 0.3, 0.3]},
+    {"id": "basin", "role": "rigid_container", "floor_z_m": 0.0, "wall_half_extent_m": 0.3}
+  ],
+  "active_objects": [],
+  "passive_objects": ["water"],
+  "required_assets": ["fluid volume", "rigid basin colliders"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase", "rgb", "depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {"fps": 24, "duration_s": 0.75, "particle_size_m": 0.025, "liquid_size_m": 0.3},
+  "notes": "OFAT low condition. Run smoke first; candidate capture is allowed only after solver/cache/surface and RGB visual gates pass."
+}

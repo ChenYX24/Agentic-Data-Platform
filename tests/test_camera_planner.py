@@ -10,6 +10,16 @@ class CameraPlannerTests(unittest.TestCase):
         plan = plan_cameras_for_scene(SceneBounds(center=(0.0, 0.0, 0.5), extent=(2.0, 2.0, 1.0)))
         self.assertEqual([view.camera_id for view in plan.views], ["front_static", "side_static", "top_down", "tracking_subject", "event_closeup"])
         self.assertEqual({view.role for view in plan.views}, {"front_static", "side_static", "top_down", "tracking_subject", "event_closeup"})
+        self.assertEqual(plan.views[0].location, (2.2, -2.2, 2.7))
+        tracking = next(view for view in plan.views if view.role == "tracking_subject")
+        event = next(view for view in plan.views if view.role == "event_closeup")
+        self.assertEqual(tracking.dynamic_camera_profile, "damped_event_context_v1")
+        self.assertEqual(tracking.camera_mode, "object_bound")
+        self.assertEqual((tracking.subject_follow_location_gain, tracking.subject_follow_target_gain), (0.65, 0.65))
+        self.assertEqual(event.dynamic_camera_profile, "damped_event_context_v1")
+        self.assertEqual(event.camera_mode, "trajectory")
+        self.assertEqual((event.subject_follow_location_gain, event.subject_follow_target_gain), (0.2, 0.1))
+        self.assertEqual(event.fov, 46.0)
 
     def test_tiny_bounds_do_not_crash(self) -> None:
         plan = plan_cameras_for_scene(SceneBounds(center=(0.0, 0.0, 0.0), extent=(0.0, 0.0, 0.0)))
@@ -38,6 +48,38 @@ class CameraPlannerTests(unittest.TestCase):
         plan = camera_plan_from_case_spec(case_spec, requested_views=["overview", "front", "side", "top"])
         self.assertEqual(len(plan.views), 4)
         self.assertEqual(plan.scene_bounds.center, (1.0, 1.0, 0.5))
+
+    def test_billiards_uses_a_tighter_reference_framing(self) -> None:
+        case = {
+            "task_type": "billiards_collision",
+            "objects": [
+                {"id": "cue", "initial_position_m": [-1.5, 0, 0.1]},
+                {"id": "rack", "initial_position_m": [0.8, 0.4, 0.1]},
+            ],
+        }
+
+        plan = camera_plan_from_case_spec(case, requested_views=["front_static", "side_static"])
+
+        self.assertEqual(plan.views[0].fov, 52.0)
+        self.assertGreater(plan.views[1].location[2], 0.8)
+
+    def test_case_can_override_one_camera_without_changing_other_views(self) -> None:
+        case = {
+            "scene": {
+                "scene_bounds": {"center": [0, 0, 1], "extent": [2, 2, 2]},
+                "camera_overrides": {
+                    "top_down": {"role": "high_oblique_static", "location": [2.42, -2.42, 5.21], "target": [0, 0, 1.25], "fov": 45}
+                },
+            }
+        }
+
+        plan = camera_plan_from_case_spec(case, requested_views=["front_static", "top_down"])
+
+        self.assertEqual(plan.views[0].camera_id, "front_static")
+        self.assertEqual(plan.views[1].role, "high_oblique_static")
+        self.assertEqual(plan.views[1].location, (2.42, -2.42, 5.21))
+        self.assertEqual(plan.views[1].target, (0.0, 0.0, 1.25))
+        self.assertEqual(plan.views[1].fov, 45.0)
 
 
 if __name__ == "__main__":

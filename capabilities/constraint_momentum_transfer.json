@@ -8,10 +8,10 @@
     "runtime_artifact_collection",
     "physics_verification"
   ],
-  "description": "Validate constrained impulse-chain momentum transfer across adjacent rigid bodies. Newton's cradle is only the smoke family; the reusable invariant is ordered contact-driven transfer through constrained bodies.",
+  "description": "Solve and validate constrained impulse-chain momentum transfer across adjacent rigid bodies from initial release state only, then replay the solver truth in UE with synchronized multimodal capture. Newton's cradle is one validated family; the reusable invariant is ordered contact-driven transfer through constrained bodies.",
   "physical_assumptions": [
     "A chain of constrained rigid bodies has stable object ids and positive mass labels.",
-    "Only the active driver may start with non-zero velocity or impulse.",
+    "Only the active driver may start displaced, with non-zero velocity, or with an explicit impulse.",
     "Passive chain members remain still before their causal contact.",
     "Adjacent contact events propagate in chain order.",
     "The terminal receiver should move after the final chain contact.",
@@ -23,13 +23,15 @@
     "constraint_trace",
     "mass_labels",
     "object_roles",
-    "post_chain_velocity"
+    "post_chain_velocity",
+    "solver_provenance"
   ],
   "required_assets": [
     "constrained rigid bodies",
     "sphere or equivalent colliders",
     "constraint anchors",
-    "support or suspension visual"
+    "support or suspension visual",
+    "stable tether visual for every constrained body"
   ],
   "verifier_rules": [
     "Chain has at least three bodies.",
@@ -37,7 +39,9 @@
     "Expected adjacent contact edges exist and are ordered.",
     "Terminal receiver post-chain speed exceeds the expected threshold.",
     "Intermediate displacement remains below the expected envelope.",
-    "Kinetic energy does not exceed the allowed chain energy ratio."
+    "Mechanical energy including gravitational potential does not exceed the allowed chain energy ratio.",
+    "Every state sample, contact event, and constraint sample retains the declared solver provenance.",
+    "Release-angle OFAT conditions keep mass, rope length, damping, assets, map, cameras, and timebase fixed."
   ],
   "failure_taxonomy": [
     "F1_missing_trajectory",
@@ -52,11 +56,16 @@
     "Remove hidden velocity from passive chain members.",
     "Export adjacent contact events in frame order.",
     "Check mass labels, restitution, and solver substeps before tuning visuals.",
-    "Use constraint_trace for suspension or chain constraints instead of relying on visual strings."
+    "Use constraint_trace for suspension or chain constraints instead of relying on visual strings.",
+    "Use MuJoCo or another declared constraint solver for the post-initial trajectory; UE replay must not re-enable live gravity or snap suspended bodies to a support surface.",
+    "Publish every condition with five views, RGB/depth/instance segmentation, a per-run three-modality overall, and a case-level three-modality comparison overall."
   ],
   "smoke_cases": [
     "cases/impulse_chain/newton_cradle_five_ball_transfer.json",
-    "cases/impulse_chain/three_body_impulse_transfer.json"
+    "cases/impulse_chain/three_body_impulse_transfer.json",
+    "cases/rigid_collision/newton_cradle/v001_release_angle_ofat/release_25deg.json",
+    "cases/rigid_collision/newton_cradle/v001_release_angle_ofat/release_35deg.json",
+    "cases/rigid_collision/newton_cradle/v001_release_angle_ofat/release_45deg.json"
   ],
   "regression_cases": [
     "cases/impulse_chain/negative_passive_prechain_motion.json",

@@ -1,0 +1,162 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "container_transfer_v002_wine_glass_to_teacup",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A real stemmed wine glass starts upright with settled water, then tilts past its pour angle above a real shallow teacup. Water has zero scripted velocity, leaves under gravity, falls through the air, splashes into the teacup, and settles before the video ends.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "asset_bound_container_transfer",
+    "minimum_initial_source_fraction": 0.9,
+    "minimum_final_receiver_fraction": 0.9,
+    "minimum_source_fraction_decrease": 0.85,
+    "maximum_final_spill_fraction": 0.1,
+    "minimum_source_evacuation_duration_s": 0.5,
+    "maximum_source_fraction_drop_per_frame": 0.2
+  },
+  "physical_parameters": {
+    "gravity_m_s2": [0.0, 0.0, -9.81],
+    "water_density_kg_m3": 1000.0
+  },
+  "workspace_bounds_m": {
+    "min_m": [-0.42, -0.2, -0.01],
+    "max_m": [0.3, 0.2, 0.7]
+  },
+  "objects": [
+    {
+      "id": "water",
+      "role": "fluid",
+      "initial_condition": {
+        "type": "bounded_volume",
+        "shape": "cylinder",
+        "frame": "source_container_local",
+        "local_position_m": [0.0, 0.0, 0.1825],
+        "radius_m": 0.022,
+        "height_m": 0.065,
+        "euler_deg": [0.0, 0.0, 0.0],
+        "velocity_field": {
+          "type": "uniform",
+          "velocity_m_s": [0.0, 0.0, 0.0]
+        }
+      }
+    },
+    {
+      "id": "source_wine_glass",
+      "role": "source_container",
+      "initial_position_m": [-0.25, 0.0, 0.0],
+      "solver_rotation_xyz_deg": [0.0, 0.0, 0.0],
+      "ue_rotation_pyr_deg": [0.0, 0.0, 0.0],
+      "kinematic_motion": {
+        "type": "tilt",
+        "start_time_s": 0.25,
+        "duration_s": 2.4,
+        "pivot_local_m": [0.052, 0.0, 0.225],
+        "expected_stream_landing_xy_m": [-0.15, 0.0],
+        "solver_end_rotation_xyz_deg": [0.0, 98.0, 0.0],
+        "ue_end_rotation_pyr_deg": [-98.0, 0.0, 0.0]
+      },
+      "asset": {
+        "ue_path": "/Game/Props/Dining/SM_Glass04.SM_Glass04",
+        "material_path": "/Game/Props/Dining/Materials/M_Glass.M_Glass",
+        "sha256": "47002da8b9e1dd6443aacf776f1fd92cbede0af1e9625713480e4bf57f8daef2",
+        "proxy": false,
+        "catalog_source": "mounted AgenticDataPlatform UE asset catalog",
+        "bbox_m": [0.1103677177, 0.1120703125, 0.2445579529]
+      },
+      "collision": {
+        "type": "axisymmetric_profile",
+        "fit_method": "catalog_bbox_plus_visual_inner_profile_v1",
+        "asset_geometry_match": true,
+        "inner_profile": [
+          {"z_m": 0.115, "radius_m": 0.012},
+          {"z_m": 0.145, "radius_m": 0.035},
+          {"z_m": 0.185, "radius_m": 0.05},
+          {"z_m": 0.225, "radius_m": 0.052}
+        ],
+        "wall_thickness_m": 0.006,
+        "panel_count": 24
+      }
+    },
+    {
+      "id": "receiver_teacup",
+      "role": "receiver_container",
+      "initial_position_m": [-0.15, 0.0, 0.0],
+      "solver_rotation_xyz_deg": [0.0, 0.0, 0.0],
+      "ue_rotation_pyr_deg": [0.0, 0.0, 0.0],
+      "asset": {
+        "ue_path": "/Game/Props/Dining/SM_TeaCup.SM_TeaCup",
+        "material_path": "/Game/Props/Dining/Materials/M_Dining.M_Dining",
+        "sha256": "fbb5ae7f8f05cf6140d6e9414039a298e6d3408a989dd8d3daa42774baf04b0a",
+        "proxy": false,
+        "catalog_source": "mounted AgenticDataPlatform UE asset catalog",
+        "bbox_m": [0.16397, 0.13833, 0.07661]
+      },
+      "collision": {
+        "type": "axisymmetric_profile",
+        "fit_method": "catalog_bbox_plus_visual_inner_profile_v1",
+        "asset_geometry_match": true,
+        "inner_profile": [
+          {"z_m": 0.018, "radius_m": 0.025},
+          {"z_m": 0.035, "radius_m": 0.045},
+          {"z_m": 0.068, "radius_m": 0.064}
+        ],
+        "wall_thickness_m": 0.005,
+        "panel_count": 24
+      }
+    }
+  ],
+  "active_objects": ["water"],
+  "passive_objects": ["source_wine_glass", "receiver_teacup"],
+  "required_assets": [
+    "/Game/Props/Dining/SM_Glass04.SM_Glass04",
+    "/Game/Props/Dining/SM_TeaCup.SM_TeaCup",
+    "/Game/Maps/UrbanDowntown/Meshes/PatioFurniture_Table_A.PatioFurniture_Table_A",
+    "reconstructed water surface"
+  ],
+  "required_signals": [
+    "particle_positions",
+    "particle_velocities",
+    "stable_particle_ids",
+    "source_occupancy_fraction",
+    "receiver_occupancy_fraction",
+    "spill_fraction",
+    "surface_mesh_sequence",
+    "solver_timebase",
+    "rgb",
+    "metric_depth",
+    "instance_segmentation"
+  ],
+  "verifier_expectation": {
+    "status": "pass"
+  },
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 4.0,
+    "particle_size_m": 0.006,
+    "steps_per_frame": 145,
+    "pre_roll_s": 0.5,
+    "surface_reconstruction": {
+      "smoothing_length_in_particle_radii": 2.0,
+      "cube_size_in_particle_radii": 0.75,
+      "iso_surface_threshold": 0.65
+    }
+  },
+  "scene": {
+    "map_preference": "/Game/Maps/MarketEnvironment/Maps/Day.Day",
+    "event_window_s": 1.25,
+    "post_event_tail_s": 1.25,
+    "support_surface": {
+      "id": "cafe_table",
+      "asset": {
+        "ue_path": "/Game/Maps/UrbanDowntown/Meshes/PatioFurniture_Table_A.PatioFurniture_Table_A",
+        "proxy": false,
+        "bbox_m": [0.9606585693, 0.9553964233, 0.9418984985]
+      },
+      "position_m": [-0.24, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "solver_floor_to_surface_m": 0.9418984985
+    }
+  },
+  "notes": "Asset-bound transfer vertical slice. SM_Glass04 and SM_TeaCup are materialized UE render assets with recorded hashes. Their open interiors are represented in Genesis by piecewise axisymmetric profiles: every profile segment uses 24 wall panels and one shared bottom closes the interior, because default convex collision would seal each rim. The teacup replaces the narrow tumbler after a solver-only landing probe showed the physical stream sweeping beyond a 10 cm opening. Water settles for 0.5 s in the upright source before capture; only the source vessel follows a declared rim-pivot tilt, while every fluid particle remains solver-owned with no scripted launch velocity."
+}

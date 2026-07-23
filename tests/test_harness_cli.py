@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def ue_env_without_config() -> dict[str, str]:
     env = os.environ.copy()
     for key in (
+        "SIM_HARNESS_WORKSPACE",
         "SIM_STUDIO_UE_PROJECT",
         "SIM_STUDIO_UE_EXECUTABLE",
         "SIM_STUDIO_UE_MAP",
@@ -32,6 +33,9 @@ def ue_env_with_fake_config(tmp: str, *, project: Path | None = None, runner_cmd
     fake_project = project or (root / "HarnessSmoke.uproject")
     if project is None:
         fake_project.write_text("{}", encoding="utf-8")
+        fake_map = root / "Content" / "Maps" / "HarnessSmoke.umap"
+        fake_map.parent.mkdir(parents=True, exist_ok=True)
+        fake_map.write_bytes(b"fake umap")
     fake_executable = root / "UnrealEditor-Cmd"
     fake_executable.write_text("#!/bin/sh\n", encoding="utf-8")
     fake_asset_registry = root / "asset_registry.json"
@@ -39,6 +43,7 @@ def ue_env_with_fake_config(tmp: str, *, project: Path | None = None, runner_cmd
     env = ue_env_without_config()
     env.update(
         {
+            "SIM_HARNESS_WORKSPACE": str(root / "workspace"),
             "SIM_STUDIO_UE_PROJECT": str(fake_project),
             "SIM_STUDIO_UE_EXECUTABLE": str(fake_executable),
             "SIM_STUDIO_UE_MAP": "/Game/Maps/HarnessSmoke",
@@ -59,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 parser = argparse.ArgumentParser()
@@ -66,6 +72,9 @@ parser.add_argument("--case-spec")
 parser.add_argument("--run-dir", required=True)
 parser.add_argument("--camera-plan")
 parser.add_argument("--actor-placement")
+parser.add_argument("--map")
+parser.add_argument("--ue-project")
+parser.add_argument("--ue-executable")
 args, _ = parser.parse_known_args()
 run_dir = Path(args.run_dir)
 run_dir.mkdir(parents=True, exist_ok=True)
@@ -81,7 +90,11 @@ if not actor_placement_path.exists():
 actor_placement = json.loads(actor_placement_path.read_text(encoding="utf-8"))
 (run_dir / "runner_received_args.json").write_text(json.dumps({
     "actor_placement": str(actor_placement_path),
-    "actor_count": len(actor_placement.get("actor_bindings", []))
+    "actor_count": len(actor_placement.get("actor_bindings", [])),
+    "ue_project": args.ue_project,
+    "ue_executable": args.ue_executable,
+    "ue_project_option_count": sum(value == "--ue-project" or value.startswith("--ue-project=") for value in sys.argv),
+    "ue_executable_option_count": sum(value == "--ue-executable" or value.startswith("--ue-executable=") for value in sys.argv)
 }), encoding="utf-8")
 trajectory = [
     {"frame": 0, "time_s": 0.0, "objects": {"floor": {"position_m": [0, 0, 0], "velocity_m_s": [0, 0, 0]}, "falling_block": {"position_m": [0, 0, 1.2], "velocity_m_s": [0, 0, 0]}}, "contacts": []},
@@ -97,15 +110,18 @@ for view in camera_plan["views"]:
     camera_id = view["camera_id"]
     view_dir = run_dir / "views" / camera_id
     view_dir.mkdir(parents=True, exist_ok=True)
-    (view_dir / "rgb.mp4").write_bytes(b"fake view rgb")
-    (view_dir / "depth.exr").write_bytes(b"fake ue depth")
-    (view_dir / "segmentation.png").write_bytes(b"fake instance segmentation")
+    (view_dir / "rgb.mp4").write_bytes(b"\\x00\\x00\\x00\\x18ftypisom")
+    (view_dir / "depth.exr").write_bytes(b"\\x76\\x2f\\x31\\x01depth")
+    (view_dir / "segmentation.exr").write_bytes(b"\\x76\\x2f\\x31\\x01instance")
     (view_dir / "meta.json").write_text(json.dumps({
         "camera_id": camera_id,
+        "source_native_view_id": camera_id,
         "frame_count_rgb": 3,
         "frame_count_depth": 3,
+        "frame_count_segmentation": 3,
         "timestamps_rgb": [0.0, 0.1, 0.2],
         "timestamps_depth": [0.0, 0.1, 0.2],
+        "timestamps_segmentation": [0.0, 0.1, 0.2],
         "fps": 10,
         "depth_source": "ue",
         "depth_variance": 1.0,
@@ -113,8 +129,9 @@ for view in camera_plan["views"]:
         "instance_level": True,
         "render_time_sec": 0.05
     }), encoding="utf-8")
-    render_views.append({"camera_id": camera_id, "rgb": f"views/{camera_id}/rgb.mp4", "depth": f"views/{camera_id}/depth.exr", "segmentation": f"views/{camera_id}/segmentation.png"})
+    render_views.append({"camera_id": camera_id, "rgb": f"views/{camera_id}/rgb.mp4", "depth": f"views/{camera_id}/depth.exr", "segmentation": f"views/{camera_id}/segmentation.exr"})
 (run_dir / "render_manifest.json").write_text(json.dumps({"schema_version": "harness_render_manifest_v1", "backend": "ue", "render_available": True, "views": render_views, "passes": [{"name": "rgb"}, {"name": "depth"}, {"name": "segmentation"}]}), encoding="utf-8")
+(run_dir / "map_report.json").write_text(json.dumps({"schema_version": "harness_map_report_v1", "status": "pass", "requested_package": args.map, "opened_package": args.map, "opened": True, "loaded_actor_count": 1}), encoding="utf-8")
 (run_dir / "video.mp4").write_bytes((run_dir / "views" / camera_plan["views"][0]["camera_id"] / "rgb.mp4").read_bytes())
 """.lstrip(),
         encoding="utf-8",
@@ -148,6 +165,48 @@ raise SystemExit(2)
 
 
 class HarnessCliTests(unittest.TestCase):
+    def test_post_render_failure_preserves_completed_runtime_evidence(self) -> None:
+        from harness.core.case_spec import load_case_spec
+        from harness.runtime.camera_planner import SceneBounds, plan_cameras_for_scene
+        from harness.runtime.ue_backend import preserve_completed_runtime, write_failed_ue_artifacts
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            view = run_dir / "views" / "front_static"
+            view.mkdir(parents=True)
+            (run_dir / "video.mp4").write_bytes(b"video")
+            (view / "rgb.mp4").write_bytes(b"view")
+
+            self.assertTrue(preserve_completed_runtime(run_dir, {"whether_real_ue_invoked": True}))
+            self.assertFalse(preserve_completed_runtime(run_dir, {"whether_real_ue_invoked": False}))
+
+            output_dir = run_dir / "ue_output"
+            output_dir.mkdir()
+            report = {
+                "failure_code": "F_POST_RENDER_VALIDATION",
+                "failure_message": "validation failed after render",
+                "failure_category": "validation_failure",
+                "whether_real_ue_invoked": True,
+            }
+            write_failed_ue_artifacts(
+                run_dir,
+                output_dir,
+                load_case_spec("cases/falling/falling_block_on_floor.json"),
+                "failed_run",
+                report,
+                camera_plan=plan_cameras_for_scene(
+                    SceneBounds(center=(0.0, 0.0, 0.5), extent=(2.0, 2.0, 1.0)),
+                    requested_views=["front_static"],
+                ),
+                render_passes=["rgb", "depth", "segmentation"],
+                requested_view_count=1,
+            )
+
+            readiness = json.loads((run_dir / "run_readiness.json").read_text(encoding="utf-8"))
+            self.assertFalse(readiness["physics_ready"])
+            self.assertFalse(readiness["visual_ready"])
+            self.assertTrue(readiness["diagnostic_runtime_preserved"])
+
     def test_cli_help_commands_do_not_error(self) -> None:
         for script in (
             "harness_list_capabilities.py",
@@ -160,12 +219,61 @@ class HarnessCliTests(unittest.TestCase):
             "harness_verify_batch.py",
             "harness_build_static_scene.py",
             "harness_compile_actor_placement.py",
+            "harness_case_tree.py",
         ):
             with self.subTest(script=script):
                 result = subprocess.run([sys.executable, str(ROOT / "scripts" / script), "--help"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 self.assertEqual(result.returncode, 0, result.stderr)
         experiment_help = subprocess.run([sys.executable, str(ROOT / "run_experiment.py"), "--help"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(experiment_help.returncode, 0, experiment_help.stderr)
+
+    def test_case_tree_is_current(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "harness_case_tree.py"), "--check"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_case_tree_can_index_workspace_without_expanding_run_depth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            version = workspace / "cases" / "rigid_collision" / "domino" / "v001_true_chaos_chain"
+            (version / "runs" / "run_01").mkdir(parents=True)
+            (version / "probes" / "smoke_01").mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "harness_case_tree.py"),
+                    "--workspace-root",
+                    str(workspace),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            tree = (workspace / "cases" / "TREE.md").read_text(encoding="utf-8")
+            self.assertIn("rigid_collision/domino/v001_true_chaos_chain/", tree)
+            self.assertIn("`runs/` (1)", tree)
+            self.assertNotIn("run_01/", tree)
+            check = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "harness_case_tree.py"),
+                    "--check",
+                    "--workspace-root",
+                    str(workspace),
+                ],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(check.returncode, 0, check.stderr)
 
     def test_list_capabilities_exposes_layered_taxonomy_without_scene_aliases(self) -> None:
         default = subprocess.run(
@@ -300,6 +408,8 @@ class HarnessCliTests(unittest.TestCase):
     def test_ue_backend_fails_with_artifact_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = ue_env_without_config()
+            env.pop("SIM_HARNESS_WORKSPACE", None)
+            env["HOME"] = tmp
             result = subprocess.run(
                 [
                     sys.executable,
@@ -348,6 +458,68 @@ class HarnessCliTests(unittest.TestCase):
             ):
                 self.assertIn(key, preflight)
                 self.assertIn(key, backend_report)
+
+    def test_ue_cli_uses_default_initialized_workspace_project_when_project_env_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "SimulatorWorkspace" / "physics_aware_harness"
+            project = workspace / "ue" / "SimulatorWorkspace.uproject"
+            project.parent.mkdir(parents=True)
+            project.write_text("{}", encoding="utf-8")
+            map_file = project.parent / "Content" / "Maps" / "HarnessSmoke.umap"
+            map_file.parent.mkdir(parents=True)
+            map_file.write_bytes(b"fake umap")
+            executable = root / "UnrealEditor-Cmd"
+            executable.write_text("#!/bin/sh\n", encoding="utf-8")
+            asset_registry = root / "asset_registry.json"
+            asset_registry.write_text("{}", encoding="utf-8")
+            fake_runner = root / "fake_runner.py"
+            write_fake_ue_runner(fake_runner)
+            env = ue_env_without_config()
+            env.pop("SIM_HARNESS_WORKSPACE", None)
+            env.update(
+                {
+                    "HOME": str(root),
+                    "SIM_STUDIO_UE_EXECUTABLE": str(executable),
+                    "SIM_STUDIO_UE_MAP": "/Game/Maps/HarnessSmoke",
+                    "SIM_STUDIO_UE_ACTOR_CLASS": "/Script/Engine.StaticMeshActor",
+                    "SIM_STUDIO_ASSET_REGISTRY": str(asset_registry),
+                    "SIM_STUDIO_UE_CONTACT_EXPORT": "1",
+                    "SIM_STUDIO_UE_RUNNER_CMD": (
+                        f"{sys.executable} {fake_runner} "
+                        "--ue-project={ue_project} --ue-executable={ue_executable}"
+                    ),
+                }
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "harness_run_case.py"),
+                    "cases/falling/falling_block_on_floor.json",
+                    "--backend",
+                    "ue",
+                    "--output-root",
+                    str(root / "runs"),
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            summary = json.loads(result.stdout)
+            preflight = json.loads((Path(summary["run_dir"]) / "ue_preflight_report.json").read_text(encoding="utf-8"))
+            received = json.loads((Path(summary["run_dir"]) / "runner_received_args.json").read_text(encoding="utf-8"))
+            self.assertFalse(preflight["env_presence"]["SIM_STUDIO_UE_PROJECT"])
+            self.assertEqual(preflight["config_sources"]["SIM_STUDIO_UE_PROJECT"], "workspace_default")
+            self.assertEqual(preflight["resolved_paths"]["SIM_STUDIO_UE_PROJECT"], str(project.resolve()))
+            self.assertEqual(received["ue_project"], str(project.resolve()))
+            self.assertEqual(received["ue_executable"], str(executable.resolve()))
+            self.assertEqual(received["ue_project_option_count"], 1)
+            self.assertEqual(received["ue_executable_option_count"], 1)
 
     def test_ue_batch_reports_preflight_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -434,6 +606,40 @@ class HarnessCliTests(unittest.TestCase):
                     self.assertEqual(summary["failure_type"], "F1_UPROJECT_INVALID")
                     self.assertFalse(summary["real_ue_invoked"])
 
+    def test_ue_map_must_be_game_package_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = ue_env_with_fake_config(tmp)
+            env["SIM_STUDIO_UE_MAP"] = "Maps/HarnessSmoke"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "harness_run_case.py"), "cases/falling/falling_block_on_floor.json", "--backend", "ue", "--output-root", tmp],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout)["failure_type"], "F3_UE_MAP_INVALID")
+
+    def test_ue_map_package_must_exist_in_current_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = ue_env_with_fake_config(tmp)
+            env["SIM_STUDIO_UE_MAP"] = "/Game/Maps/NotMaterialized.NotMaterialized"
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "harness_run_case.py"), "cases/falling/falling_block_on_floor.json", "--backend", "ue", "--output-root", tmp],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary["failure_type"], "F3_UE_MAP_PACKAGE_MISSING")
+            self.assertFalse(summary["real_ue_invoked"])
+
     def test_fake_ue_runner_success_writes_full_artifact_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -465,6 +671,7 @@ class HarnessCliTests(unittest.TestCase):
                 "harness_artifact.json",
                 "artifact_manifest.json",
                 "run_readiness.json",
+                "map_report.json",
                 "render_pass_manifest.json",
                 "render_sync_report.json",
                 "verifier_report.json",
@@ -478,7 +685,8 @@ class HarnessCliTests(unittest.TestCase):
                 "inputs/render_config.json",
                 "passes/rgb/video.mp4",
                 "passes/data/depth.exr",
-                "passes/data/mask.png",
+                "passes/data/segmentation.exr",
+                "passes/data/segmentation.exr",
                 "passes/data/instance.json",
                 "sync/camera_trajectory.json",
                 "sync/physics_trace.json",
@@ -487,14 +695,19 @@ class HarnessCliTests(unittest.TestCase):
                 self.assertTrue((run_dir / name).exists(), name)
                 self.assertGreater((run_dir / name).stat().st_size, 0, name)
             backend_report = json.loads((run_dir / "ue_backend_report.json").read_text(encoding="utf-8"))
+            scene_spec = json.loads((run_dir / "scene_spec.json").read_text(encoding="utf-8"))
             received = json.loads((run_dir / "runner_received_args.json").read_text(encoding="utf-8"))
             readiness = json.loads((run_dir / "run_readiness.json").read_text(encoding="utf-8"))
             self.assertEqual(backend_report["status"], "completed")
+            self.assertEqual(scene_spec["map"]["requested_package"], "/Game/Maps/HarnessSmoke")
             self.assertTrue(backend_report["whether_real_ue_invoked"])
             self.assertIn("--actor-placement", backend_report["runner_command"])
             self.assertGreater(received["actor_count"], 0)
+            self.assertEqual(received["ue_project"], str(Path(env["SIM_STUDIO_UE_PROJECT"]).resolve()))
+            self.assertEqual(received["ue_executable"], str(Path(env["SIM_STUDIO_UE_EXECUTABLE"]).resolve()))
             self.assertTrue(readiness["visual_ready"])
             self.assertTrue(readiness["physics_ready"])
+            self.assertTrue(readiness["map_ready"])
             self.assertTrue(readiness["ue_render_real"])
             self.assertEqual(readiness["depth_source"], "ue")
             self.assertTrue(readiness["multi_view_sync_ok"])
@@ -502,7 +715,7 @@ class HarnessCliTests(unittest.TestCase):
             self.assertEqual(readiness["render_observability_fail"], 0)
             self.assertTrue((run_dir / "views" / "front_static" / "rgb.mp4").exists())
             self.assertTrue((run_dir / "views" / "front_static" / "depth.exr").exists())
-            self.assertTrue((run_dir / "views" / "front_static" / "segmentation.png").exists())
+            self.assertTrue((run_dir / "views" / "front_static" / "segmentation.exr").exists())
             self.assertTrue((run_dir / "views" / "front_static" / "meta.json").exists())
             self.assertTrue((run_dir / "ue_output" / "runner_stdout.json").exists())
             self.assertTrue((run_dir / "ue_output" / "runner_stderr.json").exists())
@@ -568,6 +781,32 @@ class HarnessCliTests(unittest.TestCase):
             self.assertTrue(readiness["multi_view_ready"])
             self.assertFalse(readiness["depth_ready"])
             self.assertFalse(readiness["ue_render_real"])
+
+    def test_cli_case_route_keeps_runtime_outside_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            env = os.environ.copy()
+            env["SIM_HARNESS_WORKSPACE"] = str(workspace)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "harness_run_case.py"),
+                    "cases/falling/falling_block_on_floor.json",
+                    "--backend",
+                    "fallback",
+                    "--case-route",
+                    "rigid_collision/falling/v001_floor_contact",
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            run_dir = Path(json.loads(result.stdout)["run_dir"])
+            self.assertEqual(run_dir.parent, workspace.resolve() / "cases" / "rigid_collision" / "falling" / "v001_floor_contact")
 
     def test_batch_runner_passes_multiview_options(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

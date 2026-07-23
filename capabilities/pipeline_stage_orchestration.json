@@ -6,7 +6,9 @@
     "Each stage has structured inputs and outputs.",
     "Runtime failures must be represented as explicit artifacts, not silent fallbacks.",
     "Verifier decisions should be based on runtime evidence rather than UI state.",
-    "Generated dataset packages must preserve lineage from prompt/case to artifacts."
+    "Generated dataset packages must preserve lineage from prompt/case to artifacts.",
+    "One session may explore multiple attempts, but only one selected attempt is registered as its source run.",
+    "Formal condition matrices preserve exact input fingerprints and explicit condition labels."
   ],
   "required_signals": [
     "capability_plan",
@@ -15,7 +17,8 @@
     "asset_resolution",
     "runtime_artifacts",
     "verifier_report",
-    "dataset_manifest"
+    "dataset_manifest",
+    "comparison_condition"
   ],
   "required_assets": [
     "case library",
@@ -26,7 +29,10 @@
     "Each stage writes its machine-readable artifact.",
     "No stage hides a failure behind fallback success.",
     "Artifact schema versions are present and compatible.",
-    "Dataset package references only existing artifacts."
+    "Dataset package references only existing artifacts.",
+    "Comparison quorum counts selected source runs, not lighting attempts.",
+    "Condition matrices do not produce a cross-condition quality winner.",
+    "Selected runs are checked for condition and acquisition compatibility before active run-index registration."
   ],
   "failure_taxonomy": [
     "F1_scene_parsing_failure",
@@ -37,7 +43,8 @@
   "repair_suggestions": [
     "Rerun from the failed stage using the previous artifact as input.",
     "Inspect verifier_report.json and run_readiness.json before modifying runtime code.",
-    "Keep generated cases and runs out of public git commits."
+    "Keep generated cases and runs out of public git commits.",
+    "Run separate iterator sessions for each declared condition and keep only the selected attempt from each."
   ],
   "smoke_cases": [
     "cases/billiards/low_speed_single_contact.json"

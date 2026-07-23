@@ -20,6 +20,16 @@ def verify_runtime_actor_placement(case_spec: dict[str, Any], placement: dict[st
     missing_physics_object = first_missing_physics_object(case_spec, by_object)
     if missing_physics_object:
         return fail_report(case_id, "F7_runtime_artifact_incomplete", missing_physics_object, "missing_runtime_actor_binding", missing_physics_object, checks=checks(placement, bindings))
+    invalid_specialized_asset = first_invalid_specialized_asset(case_spec, by_object)
+    if invalid_specialized_asset:
+        return fail_report(
+            case_id,
+            "F2_asset_missing",
+            invalid_specialized_asset["object_id"],
+            invalid_specialized_asset["metric"],
+            invalid_specialized_asset["value"],
+            checks=checks(placement, bindings),
+        )
     bad_binding = first_bad_physics_binding(bindings)
     if bad_binding:
         return fail_report(case_id, bad_binding["failure_type"], bad_binding["object_id"], bad_binding["metric"], bad_binding["value"], checks=checks(placement, bindings))
@@ -52,6 +62,33 @@ def first_missing_physics_object(case_spec: dict[str, Any], by_object: dict[str,
     return None
 
 
+def first_invalid_specialized_asset(
+    case_spec: dict[str, Any],
+    by_object: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    for obj in case_spec.get("objects") or []:
+        if not isinstance(obj, dict):
+            continue
+        response = obj.get("fracture_response")
+        if not isinstance(response, dict) or response.get("mode") != "contact_external_strain":
+            continue
+        object_id = str(obj.get("id") or "")
+        binding = by_object.get(object_id) or {}
+        asset = binding.get("asset") if isinstance(binding.get("asset"), dict) else {}
+        kind = str(asset.get("asset_kind") or "").casefold().replace(" ", "_")
+        if kind not in {"geometrycollection", "geometry_collection"} or not asset.get("ue_path"):
+            return {
+                "object_id": object_id,
+                "metric": "fracture_asset_must_be_geometry_collection",
+                "value": {
+                    "asset_kind": asset.get("asset_kind"),
+                    "ue_path": asset.get("ue_path"),
+                    "proxy": bool(asset.get("proxy")),
+                },
+            }
+    return None
+
+
 def first_bad_physics_binding(bindings: list[dict[str, Any]]) -> dict[str, Any] | None:
     for binding in bindings:
         if not binding.get("physics_critical"):
@@ -61,6 +98,12 @@ def first_bad_physics_binding(bindings: list[dict[str, Any]]) -> dict[str, Any] 
         physics = binding.get("physics") if isinstance(binding.get("physics"), dict) else {}
         if not asset.get("ue_path") and not asset.get("proxy"):
             return {"failure_type": "F2_asset_missing", "object_id": object_id, "metric": "missing_asset_or_proxy_binding", "value": None}
+        quality_gate = asset.get("quality_gate")
+        if asset.get("ue_path") and (
+            not isinstance(quality_gate, dict)
+            or quality_gate.get("status") not in {"pass", "pass_local_preview"}
+        ):
+            return {"failure_type": "F2_asset_missing", "object_id": object_id, "metric": "asset_quality_gate", "value": quality_gate}
         if physics.get("collision_enabled") and not physics.get("collider"):
             return {"failure_type": "F3_invalid_initial_physics_state", "object_id": object_id, "metric": "missing_collider", "value": None}
         if physics.get("collision_enabled") and not physics.get("collision_profile"):
@@ -86,6 +129,11 @@ def checks(placement: dict[str, Any], bindings: list[dict[str, Any]]) -> dict[st
         "physics_critical_count": sum(1 for binding in bindings if binding.get("physics_critical")),
         "simulated_actor_count": sum(1 for binding in bindings if (binding.get("physics") or {}).get("simulate_physics")),
         "proxy_actor_count": sum(1 for binding in bindings if (binding.get("asset") or {}).get("proxy")),
+        "local_preview_asset_count": sum(
+            1
+            for binding in bindings
+            if (((binding.get("asset") or {}).get("quality_gate") or {}).get("status") == "pass_local_preview")
+        ),
         "camera_count": len(placement.get("camera_bindings") or []),
         "collision_edge_count": len((placement.get("physics_graph") or {}).get("collision_edges") or []),
     }
@@ -120,7 +168,9 @@ def fail_report(
 
 def repair_suggestions(failure_type: str) -> list[str]:
     if failure_type == "F2_asset_missing":
-        return ["Resolve a selected UE asset or mark an analytic proxy before runtime actor placement."]
+        return [
+            "Resolve a selected UE asset before runtime actor placement; contact_external_strain fracture requires a real Geometry Collection and cannot use an analytic proxy."
+        ]
     if failure_type == "F3_invalid_initial_physics_state":
         return ["Add collider, mass, material, and collision profile metadata for the physics-critical actor."]
     return ["Regenerate static scene placement and actor placement from a valid case spec."]

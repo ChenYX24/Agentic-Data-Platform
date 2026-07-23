@@ -89,6 +89,18 @@ struct ADPPHYSICSRUNTIME_API FADPContactSample
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ADP Physics")
 	FVector AxisGapsCm = FVector::ZeroVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ADP Physics")
+	bool bNativeCollision = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ADP Physics")
+	float NormalImpulseNs = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ADP Physics")
+	FVector ImpactPointCm = FVector::ZeroVector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "ADP Physics")
+	FVector ImpactNormal = FVector::ZeroVector;
 };
 
 struct FADPFrameCapture
@@ -173,10 +185,19 @@ public:
 	bool bCaptureComplete = false;
 
 private:
+	UFUNCTION()
+	void HandleComponentHit(
+		UPrimitiveComponent* HitComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComponent,
+		FVector NormalImpulse,
+		const FHitResult& Hit);
+
 	void CaptureManualFrame(float DeltaSeconds);
 	void ConfigureBody(const FADPDrivenBodyConfig& Config);
 	void CaptureFrame();
 	UPrimitiveComponent* FindPrimitiveComponent(AActor* Actor) const;
+	FName FindBodyId(AActor* Actor) const;
 	bool ComputeBoundsContact(const FADPDrivenBodyConfig& A, const FADPDrivenBodyConfig& B, FADPContactSample& OutContact) const;
 	FString BuildCaptureJson() const;
 
@@ -187,6 +208,7 @@ private:
 	int32 NextFrameIndex = 0;
 	FString OutputPath;
 	TArray<FADPFrameCapture> CapturedFrames;
+	TArray<FADPContactSample> PendingNativeContacts;
 	bool bManualSteppingEnabled = false;
 	bool bTickingWorldFromDriver = false;
 };

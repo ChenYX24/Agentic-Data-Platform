@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from harness.packaging.dataset_packager import package_runs
+from harness.core.workspace import workspace_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,7 +23,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    package = package_runs([Path(path) for path in args.run_dirs], ROOT / args.output)
+    package = package_runs([Path(path) for path in args.run_dirs], workspace_path(args.output, default_relative="outputs/harness_dataset_manifest.json"))
     print(json.dumps(package, indent=2, ensure_ascii=False))
     return 0
 

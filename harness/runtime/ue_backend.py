@@ -7,13 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from harness.core.case_spec import CaseSpec
-from harness.core.artifact_schema import write_json
+from harness.core.artifact_schema import read_json, write_json
 from harness.core.artifact_manager import ArtifactManager
 from harness.assets.asset_resolver import resolve_asset_intents
 from harness.planning.static_scene_builder import build_static_scene_layout
 from harness.runtime.actor_placement import compile_runtime_actor_placement
 from harness.runtime.camera_planner import camera_plan_from_case_spec
-from harness.runtime.render_pass_contract import enforce_ue_render_passes, verify_render_observability, write_render_contract_artifacts
+from harness.runtime.render_pass_contract import enforce_ue_render_passes, normalize_passes, verify_render_observability, write_render_contract_artifacts
 from harness.verification.runtime_actor_placement_verifier import verify_runtime_actor_placement
 from harness.verification.static_scene_verifier import verify_static_scene_layout
 from harness.verification.render_sync_checker import ARTIFACT_SCHEMA_VERSION, check_render_sync
@@ -41,6 +41,7 @@ class UEBackend:
         requested_views: list[str] | None = None,
         render_passes: list[str] | None = None,
         camera_strategy: str = "bounds_auto_v1",
+        complete_sensor_contract: bool = True,
     ) -> Path:
         run_id = f"{case.case_id}_ue"
         run_dir = Path(output_root) / run_id
@@ -50,7 +51,11 @@ class UEBackend:
         write_json(run_dir / "case_spec.json", case.data)
         write_json(run_dir / "scene_spec.json", scene_spec)
         ue_requested_views = requested_views or DEFAULT_UE_VIEWS
-        ue_render_passes = enforce_ue_render_passes(render_passes)
+        ue_render_passes = (
+            enforce_ue_render_passes(render_passes)
+            if complete_sensor_contract
+            else normalize_passes(render_passes)
+        )
         camera_plan = camera_plan_from_case_spec(case.data, requested_views=ue_requested_views, camera_strategy=camera_strategy)
         write_json(run_dir / "camera_plan.json", camera_plan_to_json(camera_plan))
         actor_contract = prepare_runtime_actor_contract(
@@ -73,7 +78,7 @@ class UEBackend:
             write_json(run_dir / "ue_preflight_report.json", empty_preflight(case.case_id))
             write_failed_ue_artifacts(run_dir, output_dir, case, run_id, report, camera_plan=camera_plan, render_passes=ue_render_passes, requested_view_count=len(ue_requested_views))
             raise UEBackendUnavailable(report["failure_message"], run_dir, str(report["failure_code"]), report)
-        preflight = build_ue_preflight_report(case.case_id)
+        preflight = build_ue_preflight_report(case.case_id, case.data)
         write_json(run_dir / "ue_preflight_report.json", preflight)
         if preflight["failure_code"]:
             report = build_backend_report(case, run_id, preflight, phase="preflight", real_ue_invoked=False)
@@ -102,20 +107,22 @@ def write_failed_ue_artifacts(
 ) -> None:
     failure_type = str(report["failure_code"])
     reason = str(report["failure_message"])
-    write_json(output_dir / "trajectory.json", [])
-    write_json(output_dir / "contact_events.json", [])
-    write_json(run_dir / "trajectory.json", [])
-    write_json(run_dir / "contact_events.json", [])
-    write_json(
-        run_dir / "camera_trajectory.json",
-        {
-            "schema_version": "harness_camera_trajectory_v1",
-            "available": False,
-            "backend": "ue",
-            "reason": reason,
-            "frames": [],
-        },
-    )
+    preserve_runtime = preserve_completed_runtime(run_dir, report)
+    if not preserve_runtime:
+        write_json(output_dir / "trajectory.json", [])
+        write_json(output_dir / "contact_events.json", [])
+        write_json(run_dir / "trajectory.json", [])
+        write_json(run_dir / "contact_events.json", [])
+        write_json(
+            run_dir / "camera_trajectory.json",
+            {
+                "schema_version": "harness_camera_trajectory_v1",
+                "available": False,
+                "backend": "ue",
+                "reason": reason,
+                "frames": [],
+            },
+        )
     write_json(
         output_dir / "summary.json",
         {
@@ -139,6 +146,7 @@ def write_failed_ue_artifacts(
             "reference_ready": False,
             "physics_ready": False,
             "visual_ready": False,
+            "diagnostic_runtime_preserved": preserve_runtime,
             "backend": "ue",
             "case_id": case.case_id,
             "failure_type": failure_type,
@@ -159,6 +167,7 @@ def write_failed_ue_artifacts(
             "reference_ready": False,
             "physics_ready": False,
             "visual_ready": False,
+            "diagnostic_runtime_preserved": preserve_runtime,
             "backend": "ue",
             "case_id": case.case_id,
             "failure_type": failure_type,
@@ -182,17 +191,18 @@ def write_failed_ue_artifacts(
             "passes": [],
         },
     )
-    write_json(
-        run_dir / "render_manifest.json",
-        {
-            "schema_version": "harness_render_manifest_v1",
-            "backend": "ue",
-            "render_available": False,
-            "reason": reason,
-            "video_missing_expected": report.get("failure_category") == "preflight_failure",
-            "passes": [],
-        },
-    )
+    if not preserve_runtime:
+        write_json(
+            run_dir / "render_manifest.json",
+            {
+                "schema_version": "harness_render_manifest_v1",
+                "backend": "ue",
+                "render_available": False,
+                "reason": reason,
+                "video_missing_expected": report.get("failure_category") == "preflight_failure",
+                "passes": [],
+            },
+        )
     write_json(
         output_dir / "render_pass_manifest.json",
         {
@@ -313,6 +323,14 @@ def write_failed_ue_artifacts(
     write_json(run_dir / "ue_backend_report.json", report)
 
 
+def preserve_completed_runtime(run_dir: Path, report: dict[str, Any]) -> bool:
+    return bool(
+        report.get("whether_real_ue_invoked")
+        and (run_dir / "video.mp4").is_file()
+        and any((run_dir / "views").glob("*/rgb.mp4"))
+    )
+
+
 def empty_preflight(case_id: str) -> dict[str, Any]:
     return {
         "schema_version": "harness_ue_preflight_report_v1",
@@ -372,11 +390,13 @@ def prepare_runtime_actor_contract(
     return {"status": "pass", "failure_type": None, "failure_message": None}
 
 
-def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
+def build_ue_preflight_report(case_id: str, case_spec: dict[str, Any] | None = None) -> dict[str, Any]:
+    explicit_project = os.environ.get("SIM_STUDIO_UE_PROJECT", "").strip()
+    workspace_project = initialized_workspace_project() if not explicit_project else ""
     env = {
-        "SIM_STUDIO_UE_PROJECT": os.environ.get("SIM_STUDIO_UE_PROJECT", ""),
+        "SIM_STUDIO_UE_PROJECT": explicit_project or workspace_project,
         "SIM_STUDIO_UE_EXECUTABLE": os.environ.get("SIM_STUDIO_UE_EXECUTABLE", ""),
-        "SIM_STUDIO_UE_MAP": os.environ.get("SIM_STUDIO_UE_MAP", ""),
+        "SIM_STUDIO_UE_MAP": requested_map_package(case_spec),
         "SIM_STUDIO_UE_ACTOR_CLASS": os.environ.get("SIM_STUDIO_UE_ACTOR_CLASS", ""),
         "SIM_STUDIO_ASSET_REGISTRY": os.environ.get("SIM_STUDIO_ASSET_REGISTRY", ""),
         "SIM_STUDIO_UE_CONTACT_EXPORT": os.environ.get("SIM_STUDIO_UE_CONTACT_EXPORT", ""),
@@ -388,17 +408,31 @@ def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
         "SIM_STUDIO_ASSET_REGISTRY": resolve_path(env["SIM_STUDIO_ASSET_REGISTRY"]),
     }
     env_presence = {key: bool(value) for key, value in env.items()}
+    env_presence["SIM_STUDIO_UE_PROJECT"] = bool(explicit_project)
+    config_sources = {
+        "SIM_STUDIO_UE_PROJECT": (
+            "environment" if explicit_project else "workspace_default" if workspace_project else "missing"
+        )
+    }
     path_exists = {key: bool(path and Path(path).exists()) for key, path in resolved_paths.items()}
     project_path = Path(resolved_paths["SIM_STUDIO_UE_PROJECT"]) if resolved_paths["SIM_STUDIO_UE_PROJECT"] else None
     project_is_file = bool(project_path and project_path.is_file())
     project_is_uproject = bool(project_path and project_path.suffix.lower() == ".uproject")
+    map_file = resolve_game_map_file(project_path, env["SIM_STUDIO_UE_MAP"]) if project_is_uproject else None
+    resolved_paths["SIM_STUDIO_UE_MAP_PACKAGE"] = str(map_file) if map_file else ""
+    path_exists["SIM_STUDIO_UE_MAP_PACKAGE"] = bool(map_file and map_file.is_file())
     path_properties = {
         "SIM_STUDIO_UE_PROJECT": {
             "exists": path_exists["SIM_STUDIO_UE_PROJECT"],
             "is_file": project_is_file,
             "suffix": project_path.suffix if project_path else "",
             "is_uproject": project_is_uproject,
-        }
+        },
+        "SIM_STUDIO_UE_MAP": {
+            "package": env["SIM_STUDIO_UE_MAP"],
+            "resolved_umap": str(map_file) if map_file else "",
+            "exists": path_exists["SIM_STUDIO_UE_MAP_PACKAGE"],
+        },
     }
     failure_code = None
     failure_message = None
@@ -419,6 +453,14 @@ def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
         failure_code = "F3_UE_MAP_MISSING"
         failure_message = "SIM_STUDIO_UE_MAP is missing."
         next_action = "Set SIM_STUDIO_UE_MAP to the map package path used for harness cases."
+    elif map_file is None:
+        failure_code = "F3_UE_MAP_INVALID"
+        failure_message = "SIM_STUDIO_UE_MAP must be a /Game/... package path."
+        next_action = "Use the materialized UE map package path, for example /Game/Maps/MyMap.MyMap."
+    elif not path_exists["SIM_STUDIO_UE_MAP_PACKAGE"]:
+        failure_code = "F3_UE_MAP_PACKAGE_MISSING"
+        failure_message = f"SIM_STUDIO_UE_MAP does not exist in the current project's Content directory: {map_file}"
+        next_action = "Materialize the requested .umap under this .uproject's Content directory or select a map that is already present."
     elif not env["SIM_STUDIO_UE_ACTOR_CLASS"]:
         failure_code = "F4_UE_ACTOR_CLASS_MISSING"
         failure_message = "SIM_STUDIO_UE_ACTOR_CLASS is missing."
@@ -440,6 +482,7 @@ def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
         "backend_mode": "ue",
         "requested_case_id": case_id,
         "env_presence": env_presence,
+        "config_sources": config_sources,
         "resolved_paths": resolved_paths,
         "path_exists": path_exists,
         "path_properties": path_properties,
@@ -449,6 +492,18 @@ def build_ue_preflight_report(case_id: str) -> dict[str, Any]:
         "next_required_action": next_action,
         "whether_real_ue_invoked": False,
     }
+
+
+def initialized_workspace_project() -> str:
+    """Use the materialized workspace project only when its root was explicitly selected."""
+    raw_workspace = os.environ.get("SIM_HARNESS_WORKSPACE", "").strip()
+    if not raw_workspace:
+        return ""
+    workspace = Path(raw_workspace).expanduser()
+    if not workspace.is_absolute():
+        return ""
+    project = workspace.resolve() / "ue" / "SimulatorWorkspace.uproject"
+    return str(project) if project.is_file() else ""
 
 
 def build_backend_report(
@@ -487,9 +542,10 @@ def build_backend_report(
             "contact_events.json",
             "camera_trajectory.json",
             "render_manifest.json",
+            "map_report.json",
             "views/<camera_id>/rgb.mp4",
             "views/<camera_id>/depth.exr",
-            "views/<camera_id>/segmentation.png",
+            "views/<camera_id>/segmentation.exr",
             "views/<camera_id>/meta.json",
         ],
     }
@@ -534,7 +590,7 @@ def invoke_real_ue_runner(
             runner_command=runner_command,
             failure_category=str(runner_report.get("failure_category") or "runtime_failure"),
         )
-    missing = [name for name in ("trajectory.json", "contact_events.json", "camera_trajectory.json", "render_manifest.json") if not (run_dir / name).exists() and not (output_dir / name).exists()]
+    missing = [name for name in ("trajectory.json", "contact_events.json", "camera_trajectory.json", "render_manifest.json", "map_report.json") if not (run_dir / name).exists() and not (output_dir / name).exists()]
     if missing:
         return build_backend_report(
             case,
@@ -592,6 +648,8 @@ def build_runner_command(run_dir: Path, preflight: dict[str, Any], *, requested_
     append_option(command, "--actor-class", values["actor_class"])
     append_option(command, "--asset-registry", values["asset_registry"])
     append_option(command, "--actor-placement", values["actor_placement"])
+    append_option(command, "--ue-project", values["ue_project"])
+    append_option(command, "--ue-executable", values["ue_executable"])
     return command
 
 
@@ -611,12 +669,38 @@ def read_runner_failure_report(run_dir: Path) -> dict[str, Any]:
 
 
 def append_option(command: list[str], option: str, value: str) -> None:
-    if option not in command:
+    if not any(part == option or part.startswith(f"{option}=") for part in command):
         command.extend([option, value])
 
 
+def evaluate_ue_physics_readiness(run_dir: str | Path) -> tuple[bool, dict[str, Any]]:
+    run_dir = Path(run_dir)
+    trajectory_path = run_dir / "trajectory.json"
+    contact_path = run_dir / "contact_events.json"
+    if not trajectory_path.is_file() or not contact_path.is_file():
+        return False, {
+            "required": False,
+            "status": "fail",
+            "violations": ["trajectory_or_contact_artifact_missing"],
+        }
+    trajectory_payload = read_json(trajectory_path)
+    trajectory = trajectory_payload.get("frames") if isinstance(trajectory_payload, dict) else trajectory_payload
+    if not isinstance(trajectory, list) or not trajectory:
+        return False, {
+            "required": False,
+            "status": "fail",
+            "violations": ["trajectory_empty_or_invalid"],
+        }
+    from harness.verification.run_quality import validate_solver_execution
+
+    failures: list[dict[str, Any]] = []
+    provenance = validate_solver_execution(run_dir, trajectory, failures, backend="ue")
+    provenance_ready = provenance.get("status") in {"pass", "not_required"}
+    return provenance_ready and not failures, provenance
+
+
 def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, run_id: str, report: dict[str, Any], *, camera_plan: Any, render_passes: list[str], requested_view_count: int) -> None:
-    for name in ("trajectory.json", "contact_events.json", "camera_trajectory.json", "render_manifest.json"):
+    for name in ("trajectory.json", "contact_events.json", "fracture_events.json", "camera_trajectory.json", "render_manifest.json"):
         source = run_dir / name
         if not source.exists():
             source = output_dir / name
@@ -639,7 +723,9 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
     render_sync = check_render_sync(run_dir, require_depth="depth" in set(render_passes), require_segmentation="segmentation" in set(render_passes), write=True)
     observability = verify_render_observability(run_dir, require_multiview=requested_view_count > 1, require_depth="depth" in set(render_passes), min_view_count=requested_view_count)
     camera_plan_dict = camera_plan_to_json(camera_plan)
+    existing_render_config = read_json(run_dir / "inputs" / "render_config.json") if (run_dir / "inputs" / "render_config.json").is_file() else {}
     render_config = {
+        **existing_render_config,
         "schema_version": "render_config.v2.3",
         "mode": os.environ.get("SIM_STUDIO_UE_RENDER_MODE", "both"),
         "backend": "ue",
@@ -656,7 +742,7 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
         camera_plan=camera_plan_dict,
         render_config=render_config,
     )
-    artifact_manager.finalize(
+    world_manifest = artifact_manager.finalize(
         run_id=run_id,
         case_id=case.case_id,
         mode=str(render_config["mode"]),
@@ -682,11 +768,34 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
     from harness.verification.physics_verifier import PhysicsVerifier
 
     verifier_report = PhysicsVerifier().verify_run_dir(run_dir, write=True)
+    map_report = read_json(run_dir / "map_report.json")
+    map_ready = map_report.get("status") == "pass"
+    asset_resolution = read_json(run_dir / "asset_resolution.json")
+    asset_quality = asset_resolution.get("quality_gate") if isinstance(asset_resolution.get("quality_gate"), dict) else {}
+    asset_catalog_reference_ready = bool(asset_quality.get("reference_assets_ready"))
+    collision_reference = collision_geometry_reference_status(run_dir)
+    assets_reference_ready = asset_catalog_reference_ready and collision_reference["ready"]
+    physics_ready, physics_provenance = evaluate_ue_physics_readiness(run_dir)
+    execution_ready = map_ready and physics_ready and verifier_report["status"] == "pass" and all(observability[key] for key in ("camera_plan_ready", "multi_view_ready", "render_pass_ready", "sync_ready")) and observability["depth_ready"] and bool(render_sync.get("camera_state_ready")) and (run_dir / "sensor_state.json").exists()
+    local_preview_ready = execution_ready and not assets_reference_ready and (
+        int(asset_quality.get("local_preview_count") or 0) > 0 or asset_catalog_reference_ready
+    )
     run_readiness = {
         "schema_version": "harness_run_readiness_v1",
         "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
-        "reference_ready": verifier_report["status"] == "pass" and all(observability[key] for key in ("camera_plan_ready", "multi_view_ready", "render_pass_ready", "sync_ready")) and observability["depth_ready"],
-        "physics_ready": (run_dir / "trajectory.json").exists() and (run_dir / "contact_events.json").exists(),
+        "reference_ready": execution_ready and assets_reference_ready,
+        "local_preview_ready": local_preview_ready,
+        "publication_tier": "reference" if execution_ready and assets_reference_ready else "local_preview" if local_preview_ready else "rejected",
+        "assets_reference_ready": assets_reference_ready,
+        "asset_catalog_reference_ready": asset_catalog_reference_ready,
+        "collision_geometry_reference_ready": collision_reference["ready"],
+        "unverified_collision_object_ids": collision_reference["unverified_object_ids"],
+        "local_preview_asset_count": int(asset_quality.get("local_preview_count") or 0),
+        "asset_fallback_count": int(asset_quality.get("fallback_count") or 0),
+        "map_ready": map_ready,
+        "physics_ready": physics_ready,
+        "execution_ready": execution_ready,
+        "physics_provenance": physics_provenance,
         "visual_ready": (run_dir / "video.mp4").exists(),
         "backend": "ue",
         "case_id": case.case_id,
@@ -696,6 +805,8 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
         "multi_view_sync_ok": bool(render_sync["multi_view_sync_ok"]),
         "render_pass_valid": bool(render_sync["render_pass_valid"]),
         "render_observability_fail": int(render_sync["render_observability_fail"]),
+        "camera_state_ready": bool(render_sync.get("camera_state_ready")),
+        "sensor_state_ready": (run_dir / "sensor_state.json").exists(),
         **observability,
     }
     write_json(run_dir / "run_readiness.json", run_readiness)
@@ -725,6 +836,7 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
             "paths": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "map_report": "map_report.json",
                 "asset_resolution": "asset_resolution.json",
                 "scene_layout": "scene_layout.json",
                 "static_scene_report": "static_scene_report.json",
@@ -732,7 +844,9 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
                 "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
+                "fracture_events": "fracture_events.json",
                 "camera_trajectory": "camera_trajectory.json",
+                "sensor_state": "sensor_state.json",
                 "summary": "ue_output/summary.json",
                 "run_readiness": "run_readiness.json",
                 "render_manifest": "render_manifest.json",
@@ -754,9 +868,12 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
             "case_id": case.case_id,
             "backend": "ue",
             "status": "completed",
+            "views": world_manifest.get("views", {}),
+            "intermediates": world_manifest.get("intermediates", {}),
             "artifacts": {
                 "case_spec": "case_spec.json",
                 "scene_spec": "scene_spec.json",
+                "map_report": "map_report.json",
                 "asset_resolution": "asset_resolution.json",
                 "scene_layout": "scene_layout.json",
                 "static_scene_report": "static_scene_report.json",
@@ -764,7 +881,9 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
                 "runtime_actor_placement_report": "runtime_actor_placement_report.json",
                 "trajectory": "trajectory.json",
                 "contact_events": "contact_events.json",
+                "fracture_events": "fracture_events.json",
                 "camera_trajectory": "camera_trajectory.json",
+                "sensor_state": "sensor_state.json",
                 "summary": "ue_output/summary.json",
                 "run_readiness": "run_readiness.json",
                 "render_manifest": "render_manifest.json",
@@ -781,8 +900,39 @@ def standardize_runner_outputs(run_dir: Path, output_dir: Path, case: CaseSpec, 
     )
 
 
+def collision_geometry_reference_status(run_dir: str | Path) -> dict[str, Any]:
+    placement_path = Path(run_dir) / "runtime_actor_placement.json"
+    if not placement_path.is_file():
+        return {"ready": False, "unverified_object_ids": ["runtime_actor_placement_missing"]}
+    placement = read_json(placement_path)
+    bindings = placement.get("actor_bindings") if isinstance(placement.get("actor_bindings"), list) else []
+    accepted = {"runtime_controlled", "body_setup_verified", "asset_body_setup_reflected", "not_applicable"}
+    unverified = []
+    for binding in bindings:
+        if not isinstance(binding, dict) or not binding.get("physics_critical"):
+            continue
+        physics = binding.get("physics") if isinstance(binding.get("physics"), dict) else {}
+        if not physics.get("collision_enabled"):
+            continue
+        if str(physics.get("collision_geometry_verification") or "") not in accepted:
+            unverified.append(str(binding.get("object_id") or "unnamed"))
+    return {"ready": not unverified, "unverified_object_ids": unverified}
+
+
 def resolve_path(value: str) -> str:
     return str(Path(value).expanduser().resolve()) if value else ""
+
+
+def resolve_game_map_file(project_path: Path | None, package_path: str) -> Path | None:
+    """Map a /Game package name to the .umap owned by this .uproject."""
+    value = package_path.strip()
+    if not project_path or not value.startswith("/Game/"):
+        return None
+    relative = value[len("/Game/") :].split(".", 1)[0]
+    parts = relative.split("/")
+    if not relative or any(part in {"", ".", ".."} for part in parts):
+        return None
+    return project_path.parent / "Content" / Path(*parts).with_suffix(".umap")
 
 
 def infer_fps_from_views(run_dir: Path) -> int:
@@ -807,6 +957,7 @@ def camera_plan_to_json(camera_plan: Any) -> dict[str, Any]:
 
 
 def compile_minimal_scene_spec(case_spec: dict[str, Any]) -> dict[str, Any]:
+    map_package = requested_map_package(case_spec)
     return {
         "schema_version": "harness_scene_spec_v1",
         "case_id": case_spec.get("case_id"),
@@ -818,8 +969,22 @@ def compile_minimal_scene_spec(case_spec: dict[str, Any]) -> dict[str, Any]:
         "required_assets": case_spec.get("required_assets", []),
         "required_signals": case_spec.get("required_signals", []),
         "camera_policy": (case_spec.get("expected_physics") or {}).get("camera", {"mode": "unspecified"}),
+        "map": {
+            "requested_package": map_package,
+            "require_opened": True,
+            "minimum_actor_count": 1,
+            "dependency_policy": "runtime_load_success",
+        },
         "runtime_contract": {
-            "must_export": ["trajectory.json", "contact_events.json", "run_readiness.json", "render_manifest.json"],
+            "must_export": ["trajectory.json", "contact_events.json", "run_readiness.json", "render_manifest.json", "map_report.json"],
             "must_not_fallback_silently": True,
         },
     }
+
+
+def requested_map_package(case_spec: dict[str, Any] | None = None) -> str:
+    explicit = os.environ.get("SIM_STUDIO_UE_MAP", "").strip()
+    if explicit:
+        return explicit
+    scene = case_spec.get("scene") if isinstance(case_spec, dict) and isinstance(case_spec.get("scene"), dict) else {}
+    return str(scene.get("map_preference") or scene.get("map_package") or "").strip()

@@ -1,0 +1,73 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "cloth_drape_over_sphere_v001",
+  "capability_id": "soft_body_deformation",
+  "prompt": "A square fabric sheet falls under gravity onto an off-centre rigid sphere, wraps around it, and settles against the floor without stretching excessively or passing through the collider.",
+  "expected_physics": {
+    "coordinate_system": "z_up",
+    "phenomenon": "gravity_driven_cloth_drape_over_rigid_sphere",
+    "minimum_mean_downward_displacement_m": 0.25,
+    "minimum_sphere_contact_frames": 3,
+    "minimum_final_vertical_span_m": 0.35,
+    "maximum_structural_edge_stretch_ratio": 1.2,
+    "maximum_final_mean_speed_m_s": 0.06,
+    "penetration_tolerance_m": 0.002
+  },
+  "objects": [
+    {
+      "id": "cloth",
+      "role": "deformable_cloth",
+      "shape": "square_grid",
+      "size_m": [1.5, 1.5],
+      "initial_center_m": [0.0, 0.0, 1.35],
+      "grid_resolution": 25,
+      "total_mass_kg": 0.45,
+      "material": {
+        "structural_stiffness_n_m": 90.0,
+        "shear_stiffness_n_m": 55.0,
+        "bending_stiffness_n_m": 10.0,
+        "spring_damping_kg_s": 0.006,
+        "air_damping_1_s": 1.2
+      }
+    },
+    {
+      "id": "sphere",
+      "role": "rigid_collider",
+      "shape": "sphere",
+      "radius_m": 0.45,
+      "position_m": [0.1, -0.04, 0.48],
+      "friction": 0.12,
+      "restitution": 0.0
+    },
+    {
+      "id": "floor",
+      "role": "support_surface",
+      "shape": "plane",
+      "z_m": 0.0,
+      "friction": 0.2,
+      "restitution": 0.0
+    }
+  ],
+  "active_objects": ["cloth"],
+  "passive_objects": ["sphere", "floor"],
+  "required_assets": ["two-sided woven cloth material", "rigid sphere", "studio floor"],
+  "required_signals": ["vertex_positions", "vertex_velocities", "triangle_topology", "solver_timebase", "surface_mesh_sequence", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 3.5,
+    "substeps_per_frame": 100,
+    "constraint_collision_thickness_m": 0.012,
+    "arch": "cpu",
+    "seed": 20260720
+  },
+  "camera_overrides": {
+    "event_closeup": {
+      "location": [-1.7, -1.7, 1.55],
+      "target": [0.0, 0.0, 0.75],
+      "fov": 55.0
+    }
+  },
+  "notes": "v001 is a solver/cache vertical slice. Vertex state in deformable_cache.npz is canonical. Per-frame OBJ and future Unreal Geometry Cache assets are derived render representations. Tearing and self-collision are explicitly out of scope."
+}

@@ -7,19 +7,23 @@
     "runtime_artifact_collection",
     "physics_verification"
   ],
-  "description": "Validate explicit magnetic attraction or repulsion fields using source-relative radial trajectory evidence. Magnet examples are smoke families, not templates.",
+  "description": "Solve and validate explicit magnetic attraction or repulsion using a finite-range force adapter, source-relative trajectory evidence, force traces, and UE multimodal replay.",
   "physical_assumptions": [
     "Magnetic motion must be caused by a structured magnetic field label, not by hidden animation.",
     "A magnetic source and magnetized body must have stable object ids.",
     "Attraction decreases radial distance to the source; repulsion increases radial distance from the source.",
-    "The radial displacement must stay within the declared expected range."
+    "The radial displacement must stay within the declared expected range.",
+    "Every trajectory frame and subject state must retain the declared solver provenance.",
+    "The subject must settle below the declared terminal-speed threshold during the post-event tail."
   ],
   "required_signals": [
     "trajectory",
     "magnetic_field_label",
     "force_field_label",
     "object_roles",
-    "source_relative_distance"
+    "source_relative_distance",
+    "force_trace",
+    "solver_provenance"
   ],
   "required_assets": [
     "magnetic source or analytic field proxy",
@@ -32,7 +36,9 @@
     "Magnetized subject trajectory has at least two frames.",
     "Attract mode moves radially toward the source.",
     "Repel mode moves radially away from the source.",
-    "Radial displacement stays within expected bounds."
+    "Radial displacement stays within expected bounds.",
+    "Trajectory and object-state provenance equal required_trajectory_source.",
+    "Final subject speed stays below maximum_final_speed_m_s."
   ],
   "failure_taxonomy": [
     "F1_missing_trajectory",
@@ -43,12 +49,14 @@
   "repair_suggestions": [
     "Write `expected_physics.magnetic_mode`, `source_object_id`, `magnetic_subject_id`, and `magnetic_strength` before runtime.",
     "Bind the magnetic source and subject as physics-critical objects or analytic proxies.",
-    "Export trajectory frames with source-relative positions.",
+    "Export trajectory frames with source-relative positions, velocities, solver source, and per-frame force vectors.",
     "Use negative cases for missing magnetic labels, no magnetic motion, and wrong radial direction."
   ],
   "smoke_cases": [
     "cases/magnetic/attract_magnetic_body.json",
-    "cases/magnetic/repel_magnetic_body.json"
+    "cases/magnetic/repel_magnetic_body.json",
+    "cases/field_force/magnetic/v001_attract_repel/attract.json",
+    "cases/field_force/magnetic/v001_attract_repel/repel.json"
   ],
   "regression_cases": [
     "cases/magnetic/negative_wrong_magnetic_direction.json",

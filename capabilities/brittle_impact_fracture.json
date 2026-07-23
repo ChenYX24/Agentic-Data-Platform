@@ -1,19 +1,26 @@
 {
   "schema_version": "harness_capability_v1",
   "id": "brittle_impact_fracture",
-  "description": "Validate brittle or destructible rigid-body fracture as a contact-energy threshold invariant rather than a glass-specific visual template.",
+  "description": "Validate brittle or destructible rigid-body fracture against an explicitly declared damage-response model rather than a glass-specific visual template.",
   "physical_assumptions": [
-    "A brittle body has a declared fracture threshold and minimum fragment evidence requirement.",
-    "Fracture may occur only after runtime contact or impact evidence with sufficient impact energy.",
-    "Below-threshold impacts should not produce fracture events unless an alternate force source is explicitly labeled.",
-    "Fragments are runtime evidence and must be represented in artifacts, not only rendered as visual debris."
+    "A brittle body declares one damage-response model, its threshold units, and a minimum fragment evidence requirement.",
+    "The impact_energy model compares runtime impact energy in joules with fracture_threshold_j.",
+    "The contact_external_strain model applies declared Chaos external strain only after runtime contact and compares it with the Geometry Collection damage threshold; strain must never be relabeled as joules.",
+    "When minimum_impact_energy_j is declared, the Harness measures translational kinetic energy from the UE impactor component's last pre-contact sample and must not issue the strain command below that gate.",
+    "energy_response_levels may declare a strictly increasing measured-energy curve; runtime selects the highest reached level and records its damage_state, strain and optional radial impulse rather than choosing a preset from the requested label.",
+    "A positive contact_external_strain result requires native collision provenance and the runtime Geometry Collection threshold; bounds inference and CaseSpec threshold echo are diagnostic only.",
+    "When center_source is native_contact_impact_point, the external-strain command and fracture event must use the native UE hit point, and the verifier compares both centers within the declared centimeter tolerance.",
+    "A radial prefracture pattern can be authored around a planned impact region, but Chaos strain does not rebuild Geometry Collection topology at runtime. Arbitrary emergent hit locations require a low-cost contact probe, a cached impact-centered asset build, and a deterministic rerun from the same initial state.",
+    "Validated causal axes are incident energy and planned impact position. Each matrix changes one axis at a time; a position condition binds target point, launch position, and the matching impact-centered Geometry Collection while preserving energy, map, camera, and timebase.",
+    "Below-energy-gate impacts are valid intact controls: contact must be recorded, the strain command must be absent, and no fracture event may appear.",
+    "Fragments are runtime evidence and must have explicit stable IDs, source ownership, per-shard state, and a cross-pass state hash; rendered debris alone is insufficient."
   ],
   "required_signals": [
     "trajectory",
     "contact_events",
     "fracture_events",
     "fragment_manifest",
-    "energy_labels",
+    "damage_response_labels",
     "object_roles"
   ],
   "required_assets": [
@@ -23,11 +30,20 @@
     "fracture fragment mesh or analytic fragment proxy"
   ],
   "verifier_rules": [
-    "Brittle object declares a positive fracture_threshold_j.",
+    "Brittle object declares either positive fracture_threshold_j for impact_energy or positive external_strain plus damage_thresholds for contact_external_strain.",
     "Expected impactor-brittle contact pair appears in contact events.",
-    "Impact energy is present and exceeds threshold when fracture occurs.",
+    "The runtime response value is present, uses the declared model and units, and reaches the runtime-reported threshold when fracture occurs.",
+    "If minimum_impact_energy_j is configured, impact_energy_j, a strictly earlier energy_sample_frame, energy_model, the gate decision, and external_strain_applied are recorded on the causal contact; a missing pre-contact sample fails closed, strain below the gate or fracture below the gate is a causality violation.",
+    "If energy_response_levels is configured, the recorded damage_state and external strain must match the level selected from measured pre-contact energy; radial_impulse_applied is true only after the UE component accepts the impulse call.",
+    "When center_source=native_contact_impact_point, fracture_center_source must name that source and fracture_center_cm must match the causal native contact impact_point_cm within tolerance.",
+    "An impact-position matrix keeps energy and acquisition fixed, uniquely labels every condition, and keeps target point, impactor launch X, planned fracture-center X, and cached Geometry Collection selection consistent.",
+    "If expected_fracture is declared, the observed intact/fractured outcome must match it in both solver truth and RGB/data sensor passes.",
+    "contact_external_strain requires a native collision event and rejects bounds-inferred contact as final evidence.",
+    "A positive fracture requires a native Chaos break-event marker; polling root-broken state alone remains diagnostic.",
     "Fracture frame is not earlier than the causal contact frame.",
-    "Fragment count is at least expected_min_fragment_count."
+    "Geometry Collection root-broken state is true for contact_external_strain fracture.",
+    "Fragment count and explicit stable fragment lineage are runtime artifacts and satisfy expected_min_fragment_count.",
+    "RGB and data passes share matching fracture event keys and explicit fragment-state hashes."
   ],
   "failure_taxonomy": [
     "F1_missing_trajectory",
@@ -37,14 +53,24 @@
     "F7_runtime_artifact_incomplete"
   ],
   "repair_suggestions": [
-    "Add fracture_threshold_j and expected_min_fragment_count to expected_physics.",
-    "Export contact impact energy from the runtime before checking fracture behavior.",
+    "Declare impact_energy or contact_external_strain explicitly, including threshold units and expected_min_fragment_count.",
+    "Export impact energy for the impact_energy model, or applied external strain plus the runtime Geometry Collection damage thresholds for the Chaos strain model.",
+    "Replace bounds contact inference with native Chaos collision provenance before promoting a diagnostic.",
     "Move any pre-contact break animation into a post-contact fracture event.",
-    "Use analytic fragment proxy for smoke if a real destructible mesh is unavailable, and mark it as proxy."
+    "Export fragment count and stable fragment lineage; a visible break without those artifacts remains diagnostic only.",
+    "Do not describe a fixed or planned radial Voronoi asset as arbitrary runtime crack generation; use probe-build-rerun when the impact location is not known during scene construction.",
+    "Use fit_dynamic_plan=false for airborne impactors or suspended brittle bodies whose declared height must not be snapped to a support surface."
   ],
   "smoke_cases": [
     "cases/fracture/glass_panel_impact_fracture.json",
-    "cases/fracture/wood_crate_impact_fracture.json"
+    "cases/fracture/wood_crate_impact_fracture.json",
+    "cases/fracture/steel_ball_board_energy_matrix/steel_ball_board_e02_intact.json",
+    "cases/fracture/steel_ball_board_energy_matrix/steel_ball_board_e18_fracture.json",
+    "cases/fracture/glass_energy_response_matrix/glass_panel_e04_crack.json",
+    "cases/fracture/glass_energy_response_matrix/glass_panel_e16_shatter.json",
+    "cases/fracture/glass_energy_response_matrix/glass_panel_e36_burst.json",
+    "cases/fracture/glass_impact_position_matrix/left_x_m0p45.json",
+    "cases/fracture/glass_impact_position_matrix/right_x_p0p45.json"
   ],
   "regression_cases": [
     "cases/fracture/negative_missing_fracture_event.json",

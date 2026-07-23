@@ -1,0 +1,58 @@
+{
+  "schema_version": "harness_case_spec_v1",
+  "case_id": "container_transfer_v001_spout_release",
+  "capability_id": "fluid_particle_dynamics",
+  "prompt": "A short cylindrical stream is released from a source spout with lateral and downward velocity into a larger receiving basin, where it splashes, spreads, and settles under gravity.",
+  "expected_physics": {
+    "gravity_m_s2": 9.81,
+    "coordinate_system": "z_up",
+    "phenomenon": "spout_release_into_receiving_container",
+    "minimum_initial_flow_speed_m_s": 0.60,
+    "minimum_horizontal_displacement_m": 0.05,
+    "minimum_final_surface_component_fraction": 0.80
+    ,"maximum_final_surface_area_to_volume_ratio_1_m": 58.0
+    ,"maximum_final_surface_volume_relative_error": 0.12
+  },
+  "objects": [
+    {
+      "id": "water_stream",
+      "role": "fluid",
+      "initial_position_m": [-0.08, 0.0, 0.68],
+      "initial_condition": {
+        "type": "bounded_volume",
+        "shape": "cylinder",
+        "radius_m": 0.115,
+        "height_m": 0.42,
+        "euler_deg": [0.0, 90.0, 0.0],
+        "velocity_field": {
+          "type": "uniform",
+          "velocity_m_s": [0.68, 0.0, -0.20]
+        }
+      }
+    },
+    {
+      "id": "receiver_basin",
+      "role": "rigid_container",
+      "floor_z_m": 0.0,
+      "wall_half_extent_m": 0.34
+    }
+  ],
+  "active_objects": ["water_stream"],
+  "passive_objects": ["receiver_basin"],
+  "required_assets": ["source spout", "receiving basin", "water stream"],
+  "required_signals": ["particle_positions", "particle_velocities", "surface_mesh_sequence", "solver_timebase", "rgb", "metric_depth", "instance_segmentation"],
+  "verifier_expectation": {"status": "pass"},
+  "should_pass": true,
+  "backend_options": {
+    "fps": 24,
+    "duration_s": 2.75,
+    "particle_size_m": 0.015,
+    "pre_roll_s": 0.0
+    ,"surface_reconstruction": {
+      "smoothing_length_in_particle_radii": 4.0,
+      "cube_size_in_particle_radii": 0.75,
+      "iso_surface_threshold": 0.125
+    }
+  },
+  "notes": "This is the transfer solver vertical slice: the source-spout boundary is represented by the released cylindrical stream. A rotating source vessel with explicit wall collision and retained-volume accounting is reserved for v002."
+}

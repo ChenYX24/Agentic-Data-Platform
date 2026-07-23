@@ -94,10 +94,16 @@ class AssetIntent:
 
 def intent_from_object(obj: dict[str, Any]) -> AssetIntent:
     role = str(obj.get("role") or "").strip() or "visual_object"
-    query = str(obj.get("asset_query") or obj.get("shape") or obj.get("id") or role)
-    category = classify_asset_role(role)
+    shape = str(obj.get("shape") or "").strip()
+    query = str(obj.get("asset_query") or " ".join(part for part in (role, shape) if part) or obj.get("id") or role)
+    category = classify_asset_role(" ".join(part for part in (role, shape, str(obj.get("asset_type") or ""), query) if part))
     physics_critical = category == "physics_critical"
-    required = ["collider", "mass", "rigid_body", "collision_profile"] if physics_critical else ["visual_proxy"]
+    required = {
+        "physics_critical": ["collider", "mass", "rigid_body", "collision_profile"],
+        "scene_map": ["map_package", "dependencies", "preview_presets"],
+        "blueprint_logic": ["owner_asset", "dependencies", "callable_functions"],
+        "skeletal_animation": ["skeleton", "animation_compatibility"],
+    }.get(category, ["visual_proxy"])
     return AssetIntent(
         object_id=str(obj.get("id") or query),
         role=role,
@@ -110,6 +116,10 @@ def intent_from_object(obj: dict[str, Any]) -> AssetIntent:
 
 def classify_asset_role(role: str) -> str:
     normalized = role.casefold().replace("-", "_").replace(" ", "_")
+    if any(term in normalized for term in ("map", "scene", "level", "environment", "world")):
+        return "scene_map"
+    if any(term in normalized for term in ("blueprint", "function_library", "callable", "logic", "interface")):
+        return "blueprint_logic"
     if any(term in normalized for term in PHYSICS_CRITICAL_ROLES):
         return "physics_critical"
     if any(term in normalized for term in ("texture", "material", "decal", "vfx", "visual")):

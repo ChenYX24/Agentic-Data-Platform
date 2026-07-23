@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable
 
 
 DEFAULT_VIEWS = ["front_static", "side_static", "top_down", "tracking_subject", "event_closeup"]
 MIN_EXTENT = 0.5
+DYNAMIC_CAMERA_PROFILE = "damped_event_context_v1"
+DYNAMIC_CAMERA_FOLLOW_GAINS = {
+    "tracking_subject": (0.65, 0.65),
+    "event_closeup": (0.20, 0.10),
+}
+DYNAMIC_CAMERA_FOV = {
+    "tracking_subject": 56.0,
+    "event_closeup": 46.0,
+}
 
 
 @dataclass(frozen=True)
@@ -25,6 +34,10 @@ class CameraViewSpec:
     target: tuple[float, float, float]
     near_clip: float | None = None
     far_clip: float | None = None
+    dynamic_camera_profile: str | None = None
+    subject_follow_location_gain: float | None = None
+    subject_follow_target_gain: float | None = None
+    camera_mode: str = "fixed"
 
 
 @dataclass(frozen=True)
@@ -45,7 +58,8 @@ def plan_cameras_for_scene(
     bounds, warnings = sanitize_bounds(scene_bounds)
     cx, cy, cz = bounds.center
     ex, ey, ez = bounds.extent
-    radius = max(ex, ey, ez, MIN_EXTENT)
+    # SceneBounds.extent is a full span (max - min), so framing uses its half-span.
+    radius = max(ex, ey, ez, MIN_EXTENT) / 2.0
     distance = max(radius * min_distance_multiplier, 1.5)
     vertical = max(ez * 1.8, distance)
     far_clip = round(max(distance * 6.0, radius * 8.0, 10.0), 4)
@@ -58,7 +72,7 @@ def plan_cameras_for_scene(
             location = (cx, cy - distance * 1.35, cz + ez * 0.55)
             rotation = look_at_rotation(location, bounds.center)
         elif role in {"side", "side_static"}:
-            location = (cx + distance * 1.35, cy, cz + ez * 0.55)
+            location = (cx + distance * 1.35, cy, cz + max(ez * 1.2, radius * 0.55, 0.8))
             rotation = look_at_rotation(location, bounds.center)
         elif role in {"top", "top_down"}:
             location = (cx, cy, cz + max(distance * 1.8, ez * 3.0, 2.0))
@@ -72,16 +86,25 @@ def plan_cameras_for_scene(
         else:
             warnings.append(f"unknown view role dropped: {role}")
             continue
+        dynamic_gains = DYNAMIC_CAMERA_FOLLOW_GAINS.get(role)
         views.append(
             CameraViewSpec(
                 camera_id=role,
                 role=role,
                 location=round_vec(location),
                 rotation=round_vec(rotation),
-                fov=float(fov),
+                fov=DYNAMIC_CAMERA_FOV.get(role, float(fov)),
                 target=round_vec(bounds.center),
                 near_clip=1.0,
                 far_clip=far_clip,
+                dynamic_camera_profile=DYNAMIC_CAMERA_PROFILE if dynamic_gains else None,
+                subject_follow_location_gain=dynamic_gains[0] if dynamic_gains else None,
+                subject_follow_target_gain=dynamic_gains[1] if dynamic_gains else None,
+                camera_mode=(
+                    "object_bound"
+                    if role == "tracking_subject"
+                    else "trajectory" if role == "event_closeup" else "fixed"
+                ),
             )
         )
     return CameraPlan(scene_bounds=bounds, views=views, strategy="bounds_auto_v1", warnings=warnings)
@@ -89,10 +112,52 @@ def plan_cameras_for_scene(
 
 def camera_plan_from_case_spec(case_spec: dict[str, Any], requested_views: list[str] | None = None, camera_strategy: str = "bounds_auto_v1") -> CameraPlan:
     bounds, warnings = bounds_from_case_spec(case_spec)
-    plan = plan_cameras_for_scene(bounds, requested_views=requested_views)
+    tabletop = str(case_spec.get("task_type") or "").casefold() in {"billiards_collision", "pool_collision"}
+    plan = plan_cameras_for_scene(
+        bounds,
+        requested_views=requested_views,
+        min_distance_multiplier=1.6 if tabletop else 2.2,
+        fov=52.0 if tabletop else 60.0,
+    )
+    scene = case_spec.get("scene") if isinstance(case_spec.get("scene"), dict) else {}
+    overrides = case_spec.get("camera_overrides") or scene.get("camera_overrides")
+    views = apply_camera_overrides(plan.views, overrides, warnings)
     if camera_strategy != "bounds_auto_v1":
         warnings.append(f"unsupported camera strategy requested, using bounds_auto_v1: {camera_strategy}")
-    return CameraPlan(scene_bounds=plan.scene_bounds, views=plan.views, strategy=plan.strategy, warnings=[*warnings, *plan.warnings])
+    return CameraPlan(scene_bounds=plan.scene_bounds, views=views, strategy=plan.strategy, warnings=[*warnings, *plan.warnings])
+
+
+def apply_camera_overrides(
+    views: list[CameraViewSpec],
+    raw_overrides: Any,
+    warnings: list[str],
+) -> list[CameraViewSpec]:
+    if not isinstance(raw_overrides, dict):
+        return views
+    result = []
+    for view in views:
+        override = raw_overrides.get(view.camera_id)
+        if not isinstance(override, dict):
+            result.append(view)
+            continue
+        location = vec3(override.get("location")) or list(view.location)
+        target = vec3(override.get("target")) or list(view.target)
+        try:
+            fov = max(10.0, min(120.0, float(override.get("fov", view.fov))))
+        except (TypeError, ValueError):
+            fov = view.fov
+            warnings.append(f"invalid camera override fov ignored: {view.camera_id}")
+        result.append(
+            replace(
+                view,
+                role=str(override.get("role") or view.role),
+                location=round_vec(location),
+                target=round_vec(target),
+                rotation=round_vec(look_at_rotation(tuple(location), tuple(target))),
+                fov=fov,
+            )
+        )
+    return result
 
 
 def bounds_from_case_spec(case_spec: dict[str, Any]) -> tuple[SceneBounds, list[str]]:
